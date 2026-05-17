@@ -129,12 +129,14 @@ All sources are publicly available. No proprietary data is required.
 docker compose up -d
 ```
 
-This starts Qdrant (port 6333) and Ollama (port 11434) with nomic-embed-text pulled.
+This starts Qdrant (port 6333). Ollama is no longer required - embeddings run
+in-process via sentence-transformers.
 
 ### 2. Install dependencies
 
 ```bash
 pip install -e ".[dev]"
+pip install einops  # required by nomic-embed-text-v1.5
 ```
 
 ### 3. Start your llama.cpp inference server
@@ -242,12 +244,13 @@ Available tools:
 | Component | Technology |
 |---|---|
 | Vector database | Qdrant |
-| Embeddings | nomic-embed-text via Ollama |
+| Embeddings | nomic-embed-text-v1.5 via sentence-transformers (in-process, no server) |
 | LLM inference | llama.cpp (OpenAI-compatible) |
+| Reranker | bge-reranker-v2-m3 via sentence-transformers (CPU, ~50ms per query) |
 | MCP server | Python MCP SDK |
 | REST API | FastAPI |
 | Evaluation | RAGAS |
-| Ingestion | httpx + BeautifulSoup4 |
+| Ingestion | subprocess curl + BeautifulSoup4 |
 
 ---
 

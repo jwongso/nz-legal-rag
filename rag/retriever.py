@@ -146,7 +146,7 @@ class VectorStore:
     def collection_stats(self) -> dict[str, Any]:
         info = self._client.get_collection(config.QDRANT_COLLECTION)
         return {
-            "vectors_count": info.vectors_count,
-            "points_count": info.points_count,
+            "points_count": info.points_count or 0,
+            "indexed_vectors_count": info.indexed_vectors_count or 0,
             "status": str(info.status),
         }

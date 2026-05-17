@@ -8,21 +8,10 @@ services:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    restart: unless-stopped
-    # Pull nomic-embed-text on first start
-    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull nomic-embed-text && wait"]
-
-  # LLM inference is NOT containerised here.
-  # Run llama-server directly on the host to access the GPU:
+  # Embeddings run in-process via sentence-transformers (no Ollama needed).
+  # LLM inference runs on the host via llama-server directly:
   #   llama-server --model /path/to/model.gguf --n-gpu-layers 14 --port 8080
   # See ~/proj/priv/llama-server.env for the active model configuration.
 
 volumes:
   qdrant_data:
-  ollama_data:

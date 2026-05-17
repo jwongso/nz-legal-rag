@@ -1,41 +1,43 @@
-"""Embedding via Ollama nomic-embed-text (runs locally, no API key needed)."""
+"""
+Embedding via sentence-transformers (nomic-embed-text-v1.5).
 
-# TODO: Once AI Max+ 395 is available, run a dedicated embedding server on Node 3
-#       and switch to a larger model (e.g. nomic-embed-text-v2 or mxbai-embed-large).
-#       EMBED_DIM will need updating in config.py if the model changes.
+Runs directly in-process on CPU - no Ollama server required.
+Model is downloaded from HuggingFace on first use (~274MB, cached after that).
+
+# TODO: Once AI Max+ 395 is available, use GPU-accelerated encoding via
+#        model.encode(..., device='cuda') for 10-20x batch throughput.
 #
-# TODO: Once a Blackwell card is affordable, switch to a GPU-accelerated embedding
-#       server (vLLM or TGI) and batch requests at 512+ for ingest throughput.
+# TODO: If Ollama becomes stable on this machine, switching back to the
+#        /api/embed batch endpoint is an option. Keep this as primary since
+#        it removes a runtime dependency.
+"""
 
-import httpx
+import numpy as np
+from sentence_transformers import SentenceTransformer
 
 import config
+
+_MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
+_PROMPT = "search_document: "  # nomic-embed-text requires task prefix
 
 
 class Embedder:
     def __init__(self) -> None:
-        self._client = httpx.AsyncClient(base_url=config.OLLAMA_URL, timeout=30)
+        self._model = SentenceTransformer(_MODEL_NAME, trust_remote_code=True)
+
+    def _encode(self, texts: list[str]) -> list[list[float]]:
+        prefixed = [_PROMPT + t for t in texts]
+        vecs = self._model.encode(prefixed, normalize_embeddings=True, show_progress_bar=False)
+        return vecs.tolist()
 
     async def embed(self, text: str) -> list[float]:
-        resp = await self._client.post(
-            "/api/embeddings",
-            json={"model": config.EMBED_MODEL, "prompt": text},
-        )
-        resp.raise_for_status()
-        return resp.json()["embedding"]
+        return self._encode([text])[0]
 
     async def embed_batch(self, texts: list[str], batch_size: int = 64) -> list[list[float]]:
-        # Uses /api/embed (batch endpoint) - ~15x faster than sequential /api/embeddings calls
         results: list[list[float]] = []
         for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            resp = await self._client.post(
-                "/api/embed",
-                json={"model": config.EMBED_MODEL, "input": batch},
-            )
-            resp.raise_for_status()
-            results.extend(resp.json()["embeddings"])
+            results.extend(self._encode(texts[i : i + batch_size]))
         return results
 
     async def close(self) -> None:
-        await self._client.aclose()
+        pass
