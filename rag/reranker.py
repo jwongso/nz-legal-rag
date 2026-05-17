@@ -17,7 +17,7 @@ from rag.retriever import SearchResult
 
 class Reranker:
     def __init__(self) -> None:
-        self._model = CrossEncoder(config.RERANKER_MODEL, max_length=512)
+        self._model = CrossEncoder(config.RERANKER_MODEL, max_length=512, device="cpu")
 
     def rerank(self, query: str, hits: list[SearchResult], top_k: int) -> list[SearchResult]:
         if not hits:

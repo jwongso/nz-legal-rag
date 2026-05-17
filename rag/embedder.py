@@ -23,7 +23,7 @@ _PROMPT = "search_document: "  # nomic-embed-text requires task prefix
 
 class Embedder:
     def __init__(self) -> None:
-        self._model = SentenceTransformer(_MODEL_NAME, trust_remote_code=True)
+        self._model = SentenceTransformer(_MODEL_NAME, trust_remote_code=True, device="cpu")
 
     def _encode(self, texts: list[str]) -> list[list[float]]:
         prefixed = [_PROMPT + t for t in texts]
