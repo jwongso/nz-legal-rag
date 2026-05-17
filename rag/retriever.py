@@ -12,6 +12,13 @@
 import uuid
 from typing import Any
 
+# Deterministic UUID namespace for point IDs - ensures re-ingest is idempotent
+_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+
+def _point_id(case_id: str, chunk_index: int) -> str:
+    return str(uuid.uuid5(_NS, f"{case_id}:{chunk_index}"))
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -82,7 +89,7 @@ class VectorStore:
     def upsert(self, vectors: list[list[float]], payloads: list[dict[str, Any]]) -> None:
         points = [
             PointStruct(
-                id=str(uuid.uuid4()),
+                id=_point_id(payload["case_id"], payload["chunk_index"]),
                 vector=vec,
                 payload=payload,
             )

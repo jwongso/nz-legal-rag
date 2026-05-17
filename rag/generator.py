@@ -48,11 +48,18 @@ class Generator:
             for i, s in enumerate(sources)
         )
 
+        source_header = "\n".join(
+            f"  [{i + 1}] {s.get('title', 'Unknown')} | {s.get('court_name', '')} | "
+            f"{s.get('date', '')} | {s.get('url', '')}"
+            for i, s in enumerate(sources)
+        )
+
         user_message = (
-            f"Context documents:\n\n{context_block}\n\n"
+            f"Source index:\n{source_header}\n\n"
+            f"Context documents (numbered to match source index):\n\n{context_block}\n\n"
             f"---\n\nQuestion: {question}\n\n"
-            f"Answer with citations to the numbered context documents above. "
-            f"After your answer, list the sources you used."
+            f"Answer using only the context above. Cite sources with [N] notation "
+            f"matching the source index. After your answer, list every source you cited."
         )
 
         resp = await self._client.post(

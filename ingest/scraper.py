@@ -150,21 +150,18 @@ async def scrape_court(
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
 
                 if cache_file.exists():
-                    # Re-parse from cache without hitting the network
                     html = cache_file.read_text(encoding="utf-8", errors="replace")
-                    soup = BeautifulSoup(html, "html.parser")
-                    # minimal parse - re-use fetch_case via mock response
-                    # (cache hit: skip rate limiting)
                     doc = await _parse_cached(html, url, court, year)
                 else:
                     await asyncio.sleep(_RATE_LIMIT_S)
-                    doc = await fetch_case(client, url, court, year)
-                    if doc:
-                        cache_file.write_text(
-                            # store original HTML for reparse
-                            (await client.get(url, headers=_HEADERS)).text,
-                            encoding="utf-8",
-                        )
+                    try:
+                        resp = await client.get(url, headers=_HEADERS, timeout=20)
+                        resp.raise_for_status()
+                        html = resp.text
+                        cache_file.write_text(html, encoding="utf-8")
+                        doc = await _parse_cached(html, url, court, year)
+                    except (httpx.HTTPError, httpx.TimeoutException):
+                        doc = None
 
                 if doc and len(doc.text) > 200:
                     yield doc

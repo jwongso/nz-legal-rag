@@ -275,9 +275,12 @@ at the scales NZ legal corpus requires (NZLII has ~50k decisions total).
 - [x] RAGAS evaluation harness with NZ legal Q&A benchmark
 
 ### Near-term (current hardware)
+- [x] Cross-encoder reranker (bge-reranker-v2-m3, CPU) - significant precision improvement
+- [x] Case deduplication in retrieval - one chunk per case, diverse context window
 - [ ] legislation.govt.nz statute ingestion
 - [ ] Synthetic Q&A generation from ingested corpus (Claude API, knowledge distillation)
-- [ ] Cross-encoder reranker (CPU, bge-reranker-v2) for better context precision
+- [ ] Ingest progress tracking (crash-resume for long runs)
+- [ ] Expand eval benchmark to 50+ questions
 
 ### Once AMD Ryzen AI Max+ 395 cluster is available (early 2027)
 - [ ] LoRA fine-tuning on NZ legal Q&A dataset (Node 2, 128GB unified memory)

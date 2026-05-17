@@ -1,10 +1,11 @@
-"""Full RAG pipeline: embed query -> retrieve -> generate answer with citations."""
+"""Full RAG pipeline: embed query -> retrieve -> deduplicate -> rerank -> generate."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import config
 from rag.embedder import Embedder
 from rag.generator import Generator
+from rag.reranker import Reranker
 from rag.retriever import SearchResult, VectorStore
 
 
@@ -14,6 +15,17 @@ class RAGResponse:
     answer: str
     sources: list[dict]
     scores: list[float]
+    context_texts: list[str] = field(default_factory=list)
+
+
+def _deduplicate(hits: list[SearchResult], top_k: int) -> list[SearchResult]:
+    """Keep the highest-scoring chunk per case_id to avoid context monopolisation."""
+    seen: dict[str, SearchResult] = {}
+    for h in hits:
+        cid = h.case_id
+        if cid not in seen or h.score > seen[cid].score:
+            seen[cid] = h
+    return sorted(seen.values(), key=lambda x: x.score, reverse=True)[:top_k]
 
 
 class RAGPipeline:
@@ -21,6 +33,7 @@ class RAGPipeline:
         self._embedder = Embedder()
         self._store = VectorStore()
         self._generator = Generator()
+        self._reranker = Reranker() if config.RERANKER_ENABLED else None
 
     async def ask(
         self,
@@ -32,24 +45,35 @@ class RAGPipeline:
     ) -> RAGResponse:
         query_vector = await self._embedder.embed(question)
 
-        hits: list[SearchResult] = self._store.search(
+        # Fetch more candidates than needed so dedup + rerank have room to work
+        raw_hits = self._store.search(
             query_vector,
-            top_k=top_k,
+            top_k=top_k * 3,
             courts=courts,
             year_from=year_from,
             year_to=year_to,
         )
 
-        if not hits:
+        if not raw_hits:
             return RAGResponse(
                 question=question,
                 answer="No relevant NZ legal documents found for this query. "
                        "The database may not contain decisions on this topic yet.",
                 sources=[],
                 scores=[],
+                context_texts=[],
             )
 
-        context_chunks = [h.text for h in hits]
+        # Deduplicate: one chunk per case_id (best score wins)
+        hits = _deduplicate(raw_hits, top_k * 2)
+
+        # Rerank with cross-encoder if enabled
+        if self._reranker is not None:
+            hits = self._reranker.rerank(question, hits, top_k)
+        else:
+            hits = hits[:top_k]
+
+        context_texts = [h.text for h in hits]
         sources = [
             {
                 "case_id": h.case_id,
@@ -61,13 +85,14 @@ class RAGPipeline:
             for h in hits
         ]
 
-        answer = await self._generator.generate(question, context_chunks, sources)
+        answer = await self._generator.generate(question, context_texts, sources)
 
         return RAGResponse(
             question=question,
             answer=answer,
             sources=sources,
             scores=[h.score for h in hits],
+            context_texts=context_texts,
         )
 
     async def search_only(
@@ -79,7 +104,11 @@ class RAGPipeline:
         year_to: int | None = None,
     ) -> list[SearchResult]:
         query_vector = await self._embedder.embed(query)
-        return self._store.search(query_vector, top_k=top_k, courts=courts, year_from=year_from, year_to=year_to)
+        hits = self._store.search(query_vector, top_k=top_k * 3, courts=courts, year_from=year_from, year_to=year_to)
+        hits = _deduplicate(hits, top_k)
+        if self._reranker is not None:
+            hits = self._reranker.rerank(query, hits, top_k)
+        return hits
 
     async def close(self) -> None:
         await self._embedder.close()

@@ -18,7 +18,10 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "600"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+RERANKER_ENABLED = os.getenv("RERANKER_ENABLED", "true").lower() == "true"
 
 NZLII_BASE = "https://www.nzlii.org"
 

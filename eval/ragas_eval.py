@@ -30,7 +30,7 @@ async def collect_responses(questions_path: Path, pipeline: RAGPipeline) -> list
             rows.append({
                 "question": question,
                 "answer": response.answer,
-                "contexts": [s["text"] for s in response.sources] if hasattr(response.sources[0], "text") else [],
+                "contexts": response.context_texts if response.context_texts else [],
                 "ground_truth": ground_truth,
             })
             print(f"  Q: {question[:60]}...")

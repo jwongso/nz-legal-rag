@@ -11,14 +11,10 @@ Add to your MCP config:
   }
 """
 
-import asyncio
-import json
-
 from mcp.server.fastmcp import FastMCP
 
 import config
 from rag.pipeline import RAGPipeline
-from rag.retriever import VectorStore
 
 mcp = FastMCP("nz-legal-rag", description="Search NZ court decisions and legislation")
 
@@ -64,7 +60,15 @@ async def search_nz_law(
         year_from=yf,
         year_to=yt,
     )
-    return response.answer
+
+    # Return answer + structured source list so the MCP client can verify citations
+    lines = [response.answer, "", "--- Sources ---"]
+    for i, s in enumerate(response.sources):
+        lines.append(
+            f"[{i + 1}] {s.get('title', 'Unknown')} | {s.get('court_name', '')} | "
+            f"{s.get('date', '')} | {s.get('url', '')}"
+        )
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -75,14 +79,15 @@ async def get_case(case_id: str) -> str:
     Args:
         case_id: Case identifier in format COURT/YEAR/NUMBER, e.g. NZTT/2023/42
     """
-    store = VectorStore()
+    # Reuse the pipeline's store rather than creating a new Qdrant connection
+    store = _get_pipeline()._store
     results = store.get_by_case_id(case_id)
 
     if not results:
         return f"Case '{case_id}' not found in the index."
 
     chunks = sorted(results, key=lambda r: r.payload.get("chunk_index", 0))
-    header = results[0]
+    header = chunks[0]
     output = [
         f"Case: {header.title}",
         f"Court: {header.court_name}",
@@ -102,7 +107,7 @@ async def get_case(case_id: str) -> str:
 @mcp.tool()
 async def list_courts() -> str:
     """List all courts in the index with their decision counts."""
-    store = VectorStore()
+    store = _get_pipeline()._store
     try:
         stats = store.collection_stats()
         courts_info = "\n".join(f"  {code}: {name}" for code, name in config.COURTS.items())
