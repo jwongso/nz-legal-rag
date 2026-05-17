@@ -23,11 +23,14 @@ environment around that is not stable. If the current US administration - or any
 one - decides to act aggressively on data access, there is very little a NZ law firm
 or a NZ government agency can do to protect client data stored on AWS, Azure, or GCP.
 
-This is not theoretical. The Microsoft Ireland case went all the way to the US Supreme
-Court before Congress resolved it by passing the CLOUD Act - which confirmed the
-government's power to reach overseas data held by US companies. A NZ company has
-essentially no standing to challenge a US government data demand in a US court. Your
-NZ lawyers cannot help you there.
+This is not theoretical. In Microsoft Corp. v. United States, the Second Circuit
+actually ruled in Microsoft's favour - finding that US warrants could not compel
+production of data stored in Dublin, Ireland. Rather than accept that limit, Congress
+passed the CLOUD Act in March 2018, which legislatively overrode the ruling and
+explicitly extended US warrant authority to data stored anywhere in the world by
+US-based companies. The Supreme Court then dismissed the case as moot on April 17,
+2018. A NZ company has essentially no standing to challenge a US government data
+demand in a US court. Your NZ lawyers cannot help you there.
 
 The phrase "national security" is the catch-all that makes normal legal protections
 disappear. We have watched the current US administration use that label - and similar
