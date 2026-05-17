@@ -108,7 +108,12 @@ def _parse_html(html: str, url: str, court: str, year: int) -> CaseDocument | No
 
     body = soup.find("body")
     text = body.get_text(separator="\n", strip=True) if body else ""
-    text = re.sub(r"NZLII:\s*Copyright Policy.*$", "", text, flags=re.DOTALL).strip()
+    # Strip NZLII breadcrumb navigation lines and copyright footer
+    text = re.sub(r"(?m)^NZLII\s*$", "", text)
+    text = re.sub(r"(?m)^>>\s*.*$", "", text)
+    text = re.sub(r"NZLII:\s*Copyright Policy.*$", "", text, flags=re.DOTALL)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
 
     try:
         number = int(url.rstrip("/").split("/")[-1].replace(".html", ""))

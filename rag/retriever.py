@@ -123,13 +123,13 @@ class VectorStore:
 
         query_filter = Filter(must=must) if must else None
 
-        hits = self._client.search(
+        hits = self._client.query_points(
             collection_name=config.QDRANT_COLLECTION,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
             query_filter=query_filter,
             with_payload=True,
-        )
+        ).points
         return [SearchResult(h.payload, h.score) for h in hits]
 
     def get_by_case_id(self, case_id: str) -> list[SearchResult]:
