@@ -9,6 +9,30 @@ queries to a cloud AI due to legal professional privilege and the NZ Privacy Act
 
 ---
 
+## Personal note
+
+I am not a big fan of cloud-first architecture. I prefer on-premise, or at minimum
+a hybrid approach where sensitive data never leaves your own hardware.
+
+This is not just a technical preference. It is a risk management position.
+
+Most cloud AI providers operate under US law and store data on US soil. The CLOUD Act
+(2018) allows US law enforcement to compel American companies to hand over data stored
+anywhere in the world, without notifying the data owner. The legal and political
+environment around that is not stable. If the current US administration - or any future
+one - decides to act aggressively on data access, there is very little a NZ law firm
+or a NZ government agency can do to protect client data stored on AWS, Azure, or GCP.
+
+You may think that is unlikely. Maybe. But "unlikely" is not the standard a lawyer
+should apply to their client's privileged communications. And it is not the standard
+I apply when designing systems.
+
+On-premise is not about being anti-cloud. It is about knowing where your data is,
+who controls it, and what jurisdiction it lives under. For NZ legal, health, and
+financial data, the answer should be: here, us, and New Zealand.
+
+---
+
 ## Why on-premise matters for NZ legal
 
 | Constraint | Cloud AI risk | This project |
