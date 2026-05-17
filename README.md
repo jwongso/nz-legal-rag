@@ -23,13 +23,30 @@ environment around that is not stable. If the current US administration - or any
 one - decides to act aggressively on data access, there is very little a NZ law firm
 or a NZ government agency can do to protect client data stored on AWS, Azure, or GCP.
 
-You may think that is unlikely. Maybe. But "unlikely" is not the standard a lawyer
-should apply to their client's privileged communications. And it is not the standard
-I apply when designing systems.
+This is not theoretical. The Microsoft Ireland case went all the way to the US Supreme
+Court before Congress resolved it by passing the CLOUD Act - which confirmed the
+government's power to reach overseas data held by US companies. A NZ company has
+essentially no standing to challenge a US government data demand in a US court. Your
+NZ lawyers cannot help you there.
 
-On-premise is not about being anti-cloud. It is about knowing where your data is,
-who controls it, and what jurisdiction it lives under. For NZ legal, health, and
-financial data, the answer should be: here, us, and New Zealand.
+The phrase "national security" is the catch-all that makes normal legal protections
+disappear. We have watched the current US administration use that label - and similar
+vague justifications - to impose trade tariffs, sanction companies, and rewrite
+agreements overnight with no warning. The same logic applied to data access is not a
+stretch. It is the same playbook.
+
+If your sensitive business data sits on AWS, Azure, or GCP - regardless of which
+region - you are operating under US jurisdiction whether you agreed to that or not.
+"Australia region" is not a legal shield. It is a marketing label on US-company
+infrastructure subject to US law.
+
+You may think that is unlikely to affect you. Maybe. But "unlikely" is not the
+standard a lawyer applies to their client's privileged communications. And it is not
+the standard I apply when designing systems that handle sensitive data.
+
+On-premise is not about being anti-cloud or anti-American. It is about knowing where
+your data is, who controls it, and what jurisdiction it lives under. For NZ legal,
+health, and financial data, the answer should be: here, us, and New Zealand.
 
 ---
 
