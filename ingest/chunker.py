@@ -95,6 +95,9 @@ def chunk_case(doc: CaseDocument) -> list[Chunk]:
 
     for heading, body in sections:
         if _word_count(body) <= config.CHUNK_SIZE:
+            text = f"{heading}\n\n{body}".strip() if heading else body
+            if _word_count(text) < config.CHUNK_MIN_WORDS:
+                continue
             chunks.append(
                 Chunk(
                     chunk_id=f"{doc.case_id}#{idx}",
@@ -106,7 +109,7 @@ def chunk_case(doc: CaseDocument) -> list[Chunk]:
                     date=doc.date,
                     parties=doc.parties,
                     url=doc.url,
-                    text=f"{heading}\n\n{body}".strip() if heading else body,
+                    text=text,
                     section_heading=heading,
                     chunk_index=idx,
                     citations=doc.citations,
@@ -117,6 +120,8 @@ def chunk_case(doc: CaseDocument) -> list[Chunk]:
             # Section too long: sliding window within the section
             sub_chunks = _split_by_words(body, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
             for sub in sub_chunks:
+                if _word_count(sub) < config.CHUNK_MIN_WORDS:
+                    continue
                 prefix = f"{heading}\n\n" if heading else ""
                 chunks.append(
                     Chunk(

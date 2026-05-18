@@ -12,16 +12,28 @@ Current hardware: single machine, llama-server on host GPU.
 
 Usage:
     python -m ingest.pipeline --court NZTT --years 2022 2023 2024
-    python -m ingest.pipeline --court NZHC --years 2023 --max-per-year 100
+    python -m ingest.pipeline --court NZHC --years 2023 --max-per-year 100 --threads 16
 """
 
 import argparse
 import asyncio
+import os
 
 from ingest.chunker import chunk_case
 from ingest.scraper import scrape_court
 from rag.embedder import Embedder
 from rag.retriever import VectorStore
+
+
+def _limit_threads(n: int) -> None:
+    os.environ["OMP_NUM_THREADS"] = str(n)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(n)
+    os.environ["MKL_NUM_THREADS"] = str(n)
+    try:
+        import torch
+        torch.set_num_threads(n)
+    except ImportError:
+        pass
 
 
 async def run(court: str, years: list[int], max_per_year: int) -> None:
@@ -68,7 +80,9 @@ def main() -> None:
     parser.add_argument("--court", required=True, choices=["NZTT", "NZHC", "NZCA", "NZSC", "NZEmpC", "NZERA"])
     parser.add_argument("--years", nargs="+", type=int, required=True)
     parser.add_argument("--max-per-year", type=int, default=200)
+    parser.add_argument("--threads", type=int, default=16, help="CPU threads for embedding (default: 16)")
     args = parser.parse_args()
+    _limit_threads(args.threads)
     asyncio.run(run(args.court, args.years, args.max_per_year))
 
 

@@ -40,7 +40,7 @@ class Generator:
 
     async def generate(self, question: str, context_chunks: list[str], sources: list[dict]) -> str:
         # Truncate each chunk to stay within VRAM budget (4096 ctx, 8GB GPU)
-        truncated = [c[:400] for c in context_chunks]
+        truncated = [c[:600] for c in context_chunks]
         context_block = "\n\n---\n\n".join(
             f"[{i + 1}] {chunk}" for i, chunk in enumerate(truncated)
         )

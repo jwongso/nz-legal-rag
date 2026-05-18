@@ -14,8 +14,9 @@ LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "768"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 
 TOP_K = int(os.getenv("TOP_K", "5"))
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "600"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "120"))   # words per chunk (~480 chars)
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "15"))  # words
+CHUNK_MIN_WORDS = int(os.getenv("CHUNK_MIN_WORDS", "20"))  # discard fragments shorter than this
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
