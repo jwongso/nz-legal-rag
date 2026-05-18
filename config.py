@@ -10,7 +10,7 @@ EMBED_DIM = 768
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8080/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3")
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "768"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 
 TOP_K = int(os.getenv("TOP_K", "5"))

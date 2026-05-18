@@ -39,8 +39,10 @@ class Generator:
         )
 
     async def generate(self, question: str, context_chunks: list[str], sources: list[dict]) -> str:
+        # Truncate each chunk to stay within VRAM budget (4096 ctx, 8GB GPU)
+        truncated = [c[:400] for c in context_chunks]
         context_block = "\n\n---\n\n".join(
-            f"[{i + 1}] {chunk}" for i, chunk in enumerate(context_chunks)
+            f"[{i + 1}] {chunk}" for i, chunk in enumerate(truncated)
         )
         source_list = "\n".join(
             f"  [{i + 1}] {s.get('title', 'Unknown')} ({s.get('court_name', '')}, {s.get('date', '')})"
