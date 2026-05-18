@@ -33,4 +33,5 @@ COURTS = {
     "NZSC": "NZ Supreme Court",
     "NZEmpC": "NZ Employment Court",
     "NZERA": "NZ Employment Relations Authority",
+    "NZLEG": "NZ Legislation",
 }

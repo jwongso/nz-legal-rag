@@ -223,7 +223,7 @@
 <div id="chat">
   <div class="empty-state" id="empty">
     <h2>Ask a legal question</h2>
-    <p>Searches 75,000+ chunks from 6 NZ courts (NZHC, NZCA, NZSC, NZERA, NZEmpC, NZTT) 2022-2024. Not legal advice.</p>
+    <p>Searches NZ court decisions (NZHC, NZCA, NZSC, NZERA, NZEmpC, NZTT) 2022-2024 and NZ legislation (RTA, ERA, Privacy Act, Companies Act, Crimes Act, CCLA). Not legal advice.</p>
     <div class="suggestions">
       <div class="suggestion" onclick="suggest(this)">Can a landlord evict for unpaid rent?</div>
       <div class="suggestion" onclick="suggest(this)">What is unjustified dismissal?</div>
@@ -244,11 +244,12 @@
       <option value="NZERA">Employment Relations Authority</option>
       <option value="NZEmpC">Employment Court</option>
       <option value="NZTT">Tenancy Tribunal</option>
+      <option value="NZLEG">Legislation</option>
     </select>
     <label>Year from:</label>
-    <input type="number" id="year_from" placeholder="2022" min="2020" max="2024" style="width:80px">
+    <input type="number" id="year_from" placeholder="2022" min="1960" max="2024" style="width:80px">
     <label>to:</label>
-    <input type="number" id="year_to" placeholder="2024" min="2020" max="2024" style="width:80px">
+    <input type="number" id="year_to" placeholder="2024" min="1960" max="2024" style="width:80px">
   </div>
   <div class="input-row">
     <textarea id="input" rows="1" placeholder="Ask a question about NZ law..." oninput="autoResize(this)"></textarea>
