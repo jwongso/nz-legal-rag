@@ -10,6 +10,7 @@ libcurl with a browser-compatible TLS fingerprint.
 """
 
 import asyncio
+import io
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +18,12 @@ from typing import AsyncIterator
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
+from pypdf import PdfReader
 
 import config
+
+# Courts whose NZLII pages are metadata-only wrappers - actual text is in PDF
+_PDF_COURTS = {"NZTT"}
 
 _CURL_CMD = [
     "curl", "-s", "-L", "--compressed",
@@ -62,6 +67,43 @@ async def _curl_get(url: str) -> str | None:
         return None
 
 
+async def _curl_get_bytes(url: str) -> bytes | None:
+    """Fetch binary content (e.g. PDF) via subprocess curl."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *_CURL_CMD, url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        if proc.returncode == 0 and stdout:
+            return stdout
+        return None
+    except (asyncio.TimeoutError, Exception):
+        return None
+
+
+def _pdf_url_from_html(html: str, base_url: str) -> str | None:
+    """Extract the PDF URL embedded as <object data="..."> in NZLII HTML pages."""
+    match = re.search(r'<object[^>]+data="([^"]+\.pdf)"', html, re.I)
+    if match:
+        return urljoin(base_url, match.group(1))
+    # Fallback: href link to .pdf
+    match = re.search(r'href="([^"]+\.pdf)"', html, re.I)
+    if match:
+        return urljoin(base_url, match.group(1))
+    return None
+
+
+def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    """Extract plain text from PDF bytes using pypdf."""
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        return "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+    except Exception:
+        return ""
+
+
 async def list_case_urls(court: str, year: int) -> list[str]:
     """Return all decision URLs for a given court and year."""
     index_url = f"{config.NZLII_BASE}/nz/cases/{court}/{year}/"
@@ -90,7 +132,7 @@ def _extract_citations(text: str) -> list[str]:
     return list(set(re.findall(pattern, text)))
 
 
-def _parse_html(html: str, url: str, court: str, year: int) -> CaseDocument | None:
+def _parse_html(html: str, url: str, court: str, year: int, pdf_text: str = "") -> CaseDocument | None:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.find_all(["nav", "header", "footer", "script", "style"]):
         tag.decompose()
@@ -106,14 +148,17 @@ def _parse_html(html: str, url: str, court: str, year: int) -> CaseDocument | No
     )
     date = date_match.group(1) if date_match else ""
 
-    body = soup.find("body")
-    text = body.get_text(separator="\n", strip=True) if body else ""
-    # Strip NZLII breadcrumb navigation lines and copyright footer
-    text = re.sub(r"(?m)^NZLII\s*$", "", text)
-    text = re.sub(r"(?m)^>>\s*.*$", "", text)
-    text = re.sub(r"NZLII:\s*Copyright Policy.*$", "", text, flags=re.DOTALL)
-    # Collapse multiple blank lines
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if pdf_text:
+        text = pdf_text
+    else:
+        body = soup.find("body")
+        text = body.get_text(separator="\n", strip=True) if body else ""
+        # Strip NZLII breadcrumb navigation lines and copyright footer
+        text = re.sub(r"(?m)^NZLII\s*$", "", text)
+        text = re.sub(r"(?m)^>>\s*.*$", "", text)
+        text = re.sub(r"NZLII:\s*Copyright Policy.*$", "", text, flags=re.DOTALL)
+        # Collapse multiple blank lines
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
 
     try:
         number = int(url.rstrip("/").split("/")[-1].replace(".html", ""))
@@ -170,6 +215,22 @@ async def scrape_court(
             if not html:
                 continue
 
-            doc = _parse_html(html, url, court, year)
+            # PDF courts: extract text from PDF, cache alongside HTML
+            pdf_text = ""
+            if court in _PDF_COURTS:
+                pdf_cache = cache_file.with_suffix(".pdf.txt")
+                if pdf_cache.exists():
+                    pdf_text = pdf_cache.read_text(encoding="utf-8")
+                else:
+                    pdf_url = _pdf_url_from_html(html, url)
+                    if pdf_url:
+                        await asyncio.sleep(_RATE_LIMIT_S)
+                        pdf_bytes = await _curl_get_bytes(pdf_url)
+                        if pdf_bytes:
+                            pdf_text = _extract_text_from_pdf(pdf_bytes)
+                            if pdf_text:
+                                pdf_cache.write_text(pdf_text, encoding="utf-8")
+
+            doc = _parse_html(html, url, court, year, pdf_text=pdf_text)
             if doc and len(doc.text) > 200:
                 yield doc
