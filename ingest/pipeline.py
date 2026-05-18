@@ -68,9 +68,12 @@ async def run(court: str, years: list[int], max_per_year: int) -> None:
             }
             for c in chunks
         ]
-        store.upsert(vectors, payloads)
-        total_chunks += len(chunks)
-        print(f"  [{doc.case_id}] {doc.title[:60]} -> {len(chunks)} chunks")
+        try:
+            store.upsert(vectors, payloads)
+            total_chunks += len(chunks)
+            print(f"  [{doc.case_id}] {doc.title[:60]} -> {len(chunks)} chunks")
+        except Exception as e:
+            print(f"  [{doc.case_id}] SKIP - upsert failed: {e}")
 
     print(f"\nDone. Indexed {total_chunks} chunks from {court} {years}.")
 
