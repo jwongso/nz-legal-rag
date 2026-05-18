@@ -223,12 +223,12 @@
 <div id="chat">
   <div class="empty-state" id="empty">
     <h2>Ask a legal question</h2>
-    <p>Searches indexed NZ court decisions (NZHC, NZERA, NZTT) 2022-2024. Not legal advice.</p>
+    <p>Searches 75,000+ chunks from 6 NZ courts (NZHC, NZCA, NZSC, NZERA, NZEmpC, NZTT) 2022-2024. Not legal advice.</p>
     <div class="suggestions">
       <div class="suggestion" onclick="suggest(this)">Can a landlord evict for unpaid rent?</div>
       <div class="suggestion" onclick="suggest(this)">What is unjustified dismissal?</div>
       <div class="suggestion" onclick="suggest(this)">Test for granting an injunction?</div>
-      <div class="suggestion" onclick="suggest(this)">Landlord notice to enter property?</div>
+      <div class="suggestion" onclick="suggest(this)">What is the test for reasonable excuse in contempt of court?</div>
     </div>
   </div>
 </div>
@@ -238,8 +238,11 @@
     <label>Court:</label>
     <select id="court">
       <option value="">All courts</option>
+      <option value="NZSC">Supreme Court</option>
+      <option value="NZCA">Court of Appeal</option>
       <option value="NZHC">High Court</option>
       <option value="NZERA">Employment Relations Authority</option>
+      <option value="NZEmpC">Employment Court</option>
       <option value="NZTT">Tenancy Tribunal</option>
     </select>
     <label>Year from:</label>

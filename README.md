@@ -132,12 +132,12 @@ Data ingestion:
 
 | Source | Content | Courts indexed |
 |---|---|---|
-| NZLII (nzlii.org) | NZ legal information institute - free public access | NZHC, NZERA, NZTT, NZCA, NZSC |
+| NZLII (nzlii.org) | NZ legal information institute - free public access | NZSC, NZCA, NZHC, NZERA, NZEmpC, NZTT |
 
 NZLII hosts HTML decisions for most courts. Tenancy Tribunal (NZTT) decisions
 are PDF-only on NZLII - the scraper fetches and extracts these via pypdf.
 
-Current coverage: **2022-2024**, 100 decisions per court per year (~38k chunks).
+Current coverage: **2022-2024**, 100 decisions per court per year (~75k chunks across 6 courts).
 All sources are publicly available. No proprietary data is required.
 
 ---
@@ -295,13 +295,14 @@ for the inference server. Not a bottleneck at the scales NZ legal corpus require
 ## Roadmap
 
 ### Done
-- [x] NZLII decision scraper (HC, CA, SC, NZTT, ERA) via subprocess curl (Cloudflare bypass)
+- [x] NZLII decision scraper (NZSC, NZCA, NZHC, NZERA, NZEmpC, NZTT) via subprocess curl (Cloudflare bypass)
 - [x] PDF extraction for Tenancy Tribunal decisions (HTML pages are metadata wrappers)
 - [x] Section-aware legal document chunker (120-word windows, 20-word minimum)
 - [x] Qdrant ingestion pipeline with metadata filtering and deterministic UUID5 IDs
+- [x] 75,000+ chunks indexed across 6 courts, 2022-2024
 - [x] RAG pipeline with citation grounding
 - [x] MCP server for Claude Code / Claude Desktop
-- [x] FastAPI REST interface
+- [x] FastAPI REST interface with web chat UI
 - [x] RAGAS evaluation harness with NZ legal Q&A benchmark
 
 ### Near-term (current hardware)
