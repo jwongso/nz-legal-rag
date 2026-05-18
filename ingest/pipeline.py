@@ -80,7 +80,7 @@ async def run(court: str, years: list[int], max_per_year: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--court", required=True, choices=["NZTT", "NZHC", "NZCA", "NZSC", "NZEmpC", "NZERA"])
+    parser.add_argument("--court", required=True, choices=["NZTT", "NZHC", "NZCA", "NZSC", "NZEmpC", "NZERA", "NZFC", "NZEnvC", "NZACC", "NZCorC", "NZLCDT", "NZHRRT", "NZREADT"])
     parser.add_argument("--years", nargs="+", type=int, required=True)
     parser.add_argument("--max-per-year", type=int, default=200)
     parser.add_argument("--threads", type=int, default=16, help="CPU threads for embedding (default: 16)")

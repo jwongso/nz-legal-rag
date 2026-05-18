@@ -33,5 +33,12 @@ COURTS = {
     "NZSC": "NZ Supreme Court",
     "NZEmpC": "NZ Employment Court",
     "NZERA": "NZ Employment Relations Authority",
+    "NZFC": "NZ Family Court",
+    "NZEnvC": "NZ Environment Court",
+    "NZACC": "NZ ACC Appeals",
+    "NZCorC": "NZ Coroners Court",
+    "NZLCDT": "NZ Lawyers and Conveyancers Disciplinary Tribunal",
+    "NZHRRT": "NZ Human Rights Review Tribunal",
+    "NZREADT": "NZ Real Estate Agents Disciplinary Tribunal",
     "NZLEG": "NZ Legislation",
 }
