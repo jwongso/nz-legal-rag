@@ -85,8 +85,9 @@ health, and financial data, the answer should be: here, us, and New Zealand.
                     |    RAG Pipeline       |
                     |  1. embed query       |
                     |  2. retrieve top-k   |
-                    |  3. build context    |
-                    |  4. generate answer  |
+                    |  3. deduplicate      |
+                    |  4. rerank           |
+                    |  5. generate answer  |
                     +-----------+-----------+
                                 |
           +---------------------+---------------------+
@@ -95,30 +96,29 @@ health, and financial data, the answer should be: here, us, and New Zealand.
 |  Qdrant            |                    |  llama.cpp server    |
 |  Vector DB         |                    |  (local inference)   |
 |  :6333             |                    |  :8080               |
-+---------+----------+                    +----------------------+
-          |
-+---------v----------+
-|  Ollama            |
-|  nomic-embed-text  |
-|  :11434            |
-+--------------------+
++--------------------+                    +----------------------+
+
+  Embeddings (nomic-embed-text-v1.5) and reranker (bge-reranker-v2-m3)
+  run in-process via sentence-transformers on CPU. No Ollama required.
 
 
 Data ingestion:
 
-  NZLII         Tenancy Tribunal    legislation.govt.nz
-     |                 |                    |
-     +--------+--------+                    |
-              |                             |
-    +---------v---------+       +-----------v----------+
-    |  scraper.py       |       |  legislation.py      |
-    |  fetch decisions  |       |  fetch statutes      |
-    +--------+----------+       +-----------+----------+
-             |                              |
-    +--------v------------------------------v----------+
-    |              chunker.py                          |
-    |  section-aware split, preserve metadata          |
-    +--------+-----------------------------------------+
+  NZLII (nzlii.org) - public legal information repository
+     |
+     +-- HTML decisions: NZHC, NZERA
+     +-- PDF decisions:  NZTT (Tenancy Tribunal, PDF-only on NZLII)
+     |
+    +---------v---------+
+    |  scraper.py       |
+    |  subprocess curl  |  (bypasses Cloudflare TLS fingerprinting)
+    +--------+----------+
+             |
+    +--------v----------+
+    |  chunker.py       |
+    |  section-aware    |
+    |  120-word windows |
+    +--------+----------+
              |
     +--------v----------+
     |  pipeline.py      |
@@ -130,13 +130,14 @@ Data ingestion:
 
 ## Data sources
 
-| Source | Content | URL |
+| Source | Content | Courts indexed |
 |---|---|---|
-| NZLII | Court decisions (HC, CA, SC, ERA, NZTT) | nzlii.org |
-| Tenancy Tribunal | Residential tenancy decisions | tenancy.govt.nz |
-| legislation.govt.nz | Acts, regulations, amendments | legislation.govt.nz |
-| Employment NZ | ERA and Employment Court decisions | employment.govt.nz |
+| NZLII (nzlii.org) | NZ legal information institute - free public access | NZHC, NZERA, NZTT, NZCA, NZSC |
 
+NZLII hosts HTML decisions for most courts. Tenancy Tribunal (NZTT) decisions
+are PDF-only on NZLII - the scraper fetches and extracts these via pypdf.
+
+Current coverage: **2022-2024**, 100 decisions per court per year (~38k chunks).
 All sources are publicly available. No proprietary data is required.
 
 ---
@@ -170,15 +171,18 @@ Any OpenAI-compatible endpoint works (Ollama, vLLM, LM Studio).
 ### 4. Ingest NZ legal data
 
 ```bash
-# Ingest Tenancy Tribunal decisions (2020-2024)
-python -m ingest.pipeline --court NZTT --years 2020 2021 2022 2023 2024
+# Ingest Tenancy Tribunal decisions (PDF extraction handled automatically)
+python -m ingest.pipeline --court NZTT --years 2022 2023 2024 --threads 16
 
 # Ingest High Court decisions
-python -m ingest.pipeline --court NZHC --years 2023 2024
+python -m ingest.pipeline --court NZHC --years 2022 2023 2024 --threads 16
 
-# Ingest specific legislation
-python -m ingest.pipeline --legislation "Privacy Act 2020" "Residential Tenancies Act 1986"
+# Ingest Employment Relations Authority decisions
+python -m ingest.pipeline --court NZERA --years 2022 2023 2024 --threads 16
 ```
+
+`--threads` caps CPU usage from sentence-transformers embedding (default: 16).
+`--max-per-year` limits decisions per year (default: 200).
 
 ### 5. Ask a question
 
@@ -281,17 +285,20 @@ This project runs on a single machine with a consumer GPU. No Blackwell required
 Current inference: llama-server with Qwen3.6-35B-A3B (MoE, only 3B active params per
 token). 14 GPU layers, 4096 context. Handles legal Q&A well within these constraints.
 
-Embeddings: nomic-embed-text via Ollama on CPU. Adequate for ingest; not a bottleneck
-at the scales NZ legal corpus requires (NZLII has ~50k decisions total).
+Embeddings: nomic-embed-text-v1.5 via sentence-transformers, running in-process on CPU.
+No Ollama server required. Thread count is capped at 16 during ingest to leave headroom
+for the inference server. Not a bottleneck at the scales NZ legal corpus requires
+(NZLII has ~50k decisions total).
 
 ---
 
 ## Roadmap
 
 ### Done
-- [x] NZLII decision scraper (HC, CA, SC, NZTT, ERA)
-- [x] Section-aware legal document chunker
-- [x] Qdrant ingestion pipeline with metadata filtering
+- [x] NZLII decision scraper (HC, CA, SC, NZTT, ERA) via subprocess curl (Cloudflare bypass)
+- [x] PDF extraction for Tenancy Tribunal decisions (HTML pages are metadata wrappers)
+- [x] Section-aware legal document chunker (120-word windows, 20-word minimum)
+- [x] Qdrant ingestion pipeline with metadata filtering and deterministic UUID5 IDs
 - [x] RAG pipeline with citation grounding
 - [x] MCP server for Claude Code / Claude Desktop
 - [x] FastAPI REST interface
