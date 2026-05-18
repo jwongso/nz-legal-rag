@@ -140,6 +140,8 @@ def _parse_html(html: str, url: str, court: str, year: int, pdf_text: str = "") 
     title_tag = soup.find("title")
     title = title_tag.get_text(strip=True) if title_tag else ""
     title = re.sub(r"\s*[-|]\s*NZLII.*$", "", title).strip()
+    # NZLII uses "NONE" for suppressed party names (court suppression orders)
+    title = re.sub(r"\bNONE\b", "[Suppressed]", title)
 
     date_match = re.search(
         r"\b(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"

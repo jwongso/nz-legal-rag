@@ -1,9 +1,12 @@
 """FastAPI REST interface for the NZ Legal RAG pipeline."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import config
@@ -21,12 +24,21 @@ async def lifespan(app: FastAPI):
         await _pipeline.close()
 
 
+_STATIC = Path(__file__).parent / "static"
+
 app = FastAPI(
     title="NZ Legal RAG",
     description="On-premise retrieval-augmented generation for NZ law",
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def ui() -> FileResponse:
+    return FileResponse(_STATIC / "index.html")
 
 
 class AskRequest(BaseModel):
