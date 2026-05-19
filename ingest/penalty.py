@@ -275,16 +275,25 @@ _AWARD_PATTERNS = [
     re.compile(r"(?:exemplary|punitive|aggravated)\s+damages?\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
 ]
 _CLAIM_PATTERNS = [
+    # Direct $ after claim/seek verb
     re.compile(r"(?:claims?\s+(?:the\s+sum\s+of\s+)?\$|"
                r"seeks?\s+\$|seeking\s+\$|claimed\s+\$)\s*([\d,]+)", re.IGNORECASE),
-    re.compile(r"amount\s+claimed\D{0,10}\$\s*([\d,]+)", re.IGNORECASE),
+    # "amount claimed [for X / of / is] $Y" - allow up to 50 chars between claimed and $
+    re.compile(r"amount\s+claimed.{0,50}\$\s*([\d,]+)", re.IGNORECASE),
     re.compile(r"application\s+(?:is\s+)?for\s+\$\s*([\d,]+)", re.IGNORECASE),
-    # Additional NZ-common phrasings
-    re.compile(r"(?:applicant|claimant|plaintiff|tenant)\s+(?:is\s+)?claim(?:s|ing)\s+"
+    # "[party] claims/is claiming $X"
+    re.compile(r"(?:applicant|claimant|plaintiff|tenant|landlord)\s+(?:is\s+)?claim(?:s|ing)\s+"
                r"(?:the\s+sum\s+of\s+)?\$\s*([\d,]+)", re.IGNORECASE),
-    re.compile(r"\$\s*([\d,]+)\s+(?:is\s+)?(?:claimed|sought|requested)", re.IGNORECASE),
+    re.compile(r"\$\s*([\d,]+)\s+(?:is\s+)?(?:claimed|sought|requested)\b", re.IGNORECASE),
     re.compile(r"total\s+(?:claim|sum|amount)\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
     re.compile(r"(?:has|have)\s+claimed\s+\$\s*([\d,]+)", re.IGNORECASE),
+    # "seeks remedies of: compensation of $X" / "seeks ... compensation of $X"
+    re.compile(r"seeks?.{0,60}compensation\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
+    re.compile(r"seeks?.{0,60}damages?\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
+    # Statement of problem / claim form phrasings
+    re.compile(r"statement\s+of\s+problem.{0,300}\$\s*([\d,]+)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"(?:the\s+)?(?:applicant|claimant)\s+seeks\s+(?:the\s+following\s+remedies|"
+               r"an?\s+order|compensation|damages?).{0,80}\$\s*([\d,]+)", re.IGNORECASE),
 ]
 
 _REINSTATEMENT = re.compile(r"\breinstate(?:ment|d)?\b", re.IGNORECASE)

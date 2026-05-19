@@ -563,7 +563,15 @@
           </div>
         </div>
         <div class="penalty-group">
-          <label>Civil - recovery rate range (1.0 = full, &gt;1.0 = exemplary damages)</label>
+          <label>Civil - awarded amount ($)</label>
+          <div class="range-row">
+            <input type="number" id="min_awarded" placeholder="min" step="1000" min="0">
+            <span>to</span>
+            <input type="number" id="max_awarded" placeholder="max" step="1000" min="0">
+          </div>
+        </div>
+        <div class="penalty-group">
+          <label>Civil - recovery rate (1.0 = full claim, &gt;1.0 = exemplary damages)</label>
           <div class="range-row">
             <input type="number" id="min_recovery" placeholder="min" step="0.1" min="0">
             <span>to</span>
@@ -682,9 +690,10 @@
       const osi = penalty.outcome_osi;
       return `OSI ${osi.toFixed(2)} - ${penalty.outcome_label || ''}`;
     }
-    if (ct === 'civil_financial' || ct === 'civil_mixed') {
-      if (penalty.recovery_rate != null) {
-        return `Recovery ${(penalty.recovery_rate * 100).toFixed(0)}%`;
+    if (ct === 'civil_financial' || ct === 'civil_mixed' || ct === 'civil_disciplinary') {
+      if (penalty.recovery_rate != null && penalty.awarded_amount != null) {
+        const pct = (penalty.recovery_rate * 100).toFixed(0);
+        return `$${penalty.awarded_amount.toLocaleString()} (${pct}% of claim)`;
       }
       if (penalty.awarded_amount != null) {
         return `Awarded $${penalty.awarded_amount.toLocaleString()}`;
@@ -718,6 +727,8 @@
     const flags = Array.from(document.querySelectorAll('#flag-checkboxes input:checked')).map(cb => cb.value);
     const minOsi      = document.getElementById('min_osi').value;
     const maxOsi      = document.getElementById('max_osi').value;
+    const minAwarded  = document.getElementById('min_awarded').value;
+    const maxAwarded  = document.getElementById('max_awarded').value;
     const minRecovery = document.getElementById('min_recovery').value;
     const maxRecovery = document.getElementById('max_recovery').value;
     const court       = document.getElementById('notable_court').value;
@@ -728,8 +739,10 @@
     if (flags.length)     body.flags       = flags;
     if (minOsi)           body.min_osi     = parseFloat(minOsi);
     if (maxOsi)           body.max_osi     = parseFloat(maxOsi);
-    if (minRecovery)      body.min_recovery= parseFloat(minRecovery);
-    if (maxRecovery)      body.max_recovery= parseFloat(maxRecovery);
+    if (minAwarded)       body.min_awarded  = parseFloat(minAwarded);
+    if (maxAwarded)       body.max_awarded  = parseFloat(maxAwarded);
+    if (minRecovery)      body.min_recovery = parseFloat(minRecovery);
+    if (maxRecovery)      body.max_recovery = parseFloat(maxRecovery);
     if (court)            body.courts      = [court];
     if (yearFrom)         body.year_from   = parseInt(yearFrom);
     if (yearTo)           body.year_to     = parseInt(yearTo);
@@ -796,7 +809,7 @@
 
   function clearNotable() {
     document.querySelectorAll('#flag-checkboxes input').forEach(cb => cb.checked = false);
-    ['min_osi','max_osi','min_recovery','max_recovery','notable_year_from','notable_year_to'].forEach(id => {
+    ['min_osi','max_osi','min_awarded','max_awarded','min_recovery','max_recovery','notable_year_from','notable_year_to'].forEach(id => {
       document.getElementById(id).value = '';
     });
     document.getElementById('notable_court').value = '';

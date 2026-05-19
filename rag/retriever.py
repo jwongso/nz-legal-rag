@@ -158,6 +158,8 @@ class VectorStore:
         max_outcome_osi: float | None = None,
         min_recovery_rate: float | None = None,
         max_recovery_rate: float | None = None,
+        min_awarded: float | None = None,
+        max_awarded: float | None = None,
         courts: list[str] | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
@@ -194,6 +196,15 @@ class VectorStore:
                 range=Range(
                     gte=min_recovery_rate if min_recovery_rate is not None else 0.0,
                     lte=max_recovery_rate if max_recovery_rate is not None else 99999.0,
+                ),
+            ))
+
+        if min_awarded is not None or max_awarded is not None:
+            must.append(FieldCondition(
+                key="penalty.awarded_amount",
+                range=Range(
+                    gte=min_awarded if min_awarded is not None else 0.0,
+                    lte=max_awarded if max_awarded is not None else 999_999_999.0,
                 ),
             ))
 

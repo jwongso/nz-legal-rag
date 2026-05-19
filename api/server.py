@@ -130,6 +130,8 @@ class NotableRequest(BaseModel):
     max_osi: float | None = None
     min_recovery: float | None = None
     max_recovery: float | None = None
+    min_awarded: float | None = None
+    max_awarded: float | None = None
     courts: list[str] | None = None
     year_from: int | None = None
     year_to: int | None = None
@@ -155,6 +157,8 @@ async def notable(req: NotableRequest) -> list[NotableResult]:
         max_outcome_osi=req.max_osi,
         min_recovery_rate=req.min_recovery,
         max_recovery_rate=req.max_recovery,
+        min_awarded=req.min_awarded,
+        max_awarded=req.max_awarded,
         courts=req.courts or None,
         year_from=req.year_from,
         year_to=req.year_to,
