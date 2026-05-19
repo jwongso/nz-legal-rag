@@ -28,6 +28,42 @@
     header h1 { font-size: 1.1rem; font-weight: 600; }
     header span { font-size: 0.8rem; color: #a0aec0; }
 
+    /* Tab navigation */
+    .tab-nav {
+      background: #1a1a2e;
+      border-top: 1px solid #2d2d5e;
+      display: flex;
+      flex-shrink: 0;
+      padding: 0 24px;
+    }
+
+    .tab-btn {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      color: #a0aec0;
+      font-size: 0.88rem;
+      font-family: inherit;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab-btn.active {
+      color: #fff;
+      border-bottom-color: #4a90d9;
+    }
+
+    .tab-btn:hover:not(.active) { color: #cbd5e0; }
+
+    /* --- ASK TAB --- */
+    #tab-ask {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
     #chat {
       flex: 1;
       overflow-y: auto;
@@ -74,10 +110,7 @@
 
     .sources strong { color: #1a1a2e; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
-    .source-item a {
-      color: #2b6cb0;
-      text-decoration: none;
-    }
+    .source-item a { color: #2b6cb0; text-decoration: none; }
     .source-item a:hover { text-decoration: underline; }
 
     .typing {
@@ -112,7 +145,7 @@
       font-style: italic;
     }
 
-    footer {
+    #ask-footer {
       background: #fff;
       border-top: 1px solid #e2e8f0;
       padding: 16px 24px;
@@ -211,6 +244,240 @@
     }
 
     .suggestion:hover { background: #ebf8ff; }
+
+    /* --- NOTABLE CASES TAB --- */
+    #tab-notable {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .notable-panel {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .notable-panel h2 {
+      font-size: 1.1rem;
+      color: #1a1a2e;
+      margin-bottom: 18px;
+    }
+
+    .filter-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+
+    .filter-card h3 {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #718096;
+      margin-bottom: 12px;
+    }
+
+    .flag-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px 16px;
+      margin-bottom: 4px;
+    }
+
+    .flag-grid label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.84rem;
+      color: #2d3748;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .flag-grid input[type="checkbox"] { cursor: pointer; }
+
+    .penalty-row {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .penalty-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .penalty-group label {
+      font-size: 0.8rem;
+      color: #4a5568;
+      font-weight: 500;
+    }
+
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .range-row input[type="number"] {
+      width: 90px;
+      padding: 6px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-family: inherit;
+    }
+
+    .range-row span { font-size: 0.8rem; color: #718096; }
+
+    .notable-filter-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 4px;
+    }
+
+    .notable-filter-row label { font-size: 0.8rem; color: #666; }
+
+    .notable-filter-row select,
+    .notable-filter-row input[type="number"] {
+      padding: 6px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-family: inherit;
+    }
+
+    .btn-search {
+      margin-top: 16px;
+      padding: 10px 24px;
+      background: #1a1a2e;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-search:hover { background: #2d2d5e; }
+    .btn-search:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    .btn-clear {
+      margin-top: 16px;
+      margin-left: 8px;
+      padding: 10px 16px;
+      background: none;
+      color: #718096;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .btn-clear:hover { background: #f7fafc; }
+
+    #notable-results { margin-top: 4px; }
+
+    .notable-empty {
+      text-align: center;
+      color: #a0aec0;
+      padding: 40px 0;
+      font-size: 0.9rem;
+    }
+
+    .notable-count {
+      font-size: 0.82rem;
+      color: #718096;
+      margin-bottom: 12px;
+    }
+
+    .notable-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      margin-bottom: 12px;
+      border-left: 3px solid #e2e8f0;
+    }
+
+    .notable-card.criminal { border-left-color: #e53e3e; }
+    .notable-card.civil    { border-left-color: #3182ce; }
+
+    .notable-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .notable-card-title a {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #1a1a2e;
+      text-decoration: none;
+    }
+
+    .notable-card-title a:hover { text-decoration: underline; }
+
+    .notable-card-meta {
+      font-size: 0.78rem;
+      color: #718096;
+      margin-top: 2px;
+    }
+
+    .osi-badge {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .osi-low    { background: #ebf8ff; color: #2b6cb0; }
+    .osi-mid    { background: #fef3c7; color: #b45309; }
+    .osi-high   { background: #fff5f5; color: #c53030; }
+    .osi-severe { background: #e53e3e; color: #fff; }
+
+    .penalty-line {
+      font-size: 0.82rem;
+      color: #4a5568;
+      margin-bottom: 8px;
+    }
+
+    .penalty-line strong { color: #2d3748; }
+
+    .flag-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .flag-pill {
+      font-size: 0.72rem;
+      padding: 2px 9px;
+      background: #edf2f7;
+      color: #4a5568;
+      border-radius: 12px;
+    }
+
+    .loading-dots {
+      text-align: center;
+      color: #718096;
+      padding: 30px 0;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -220,53 +487,327 @@
   <span>On-premise - all queries stay on your hardware</span>
 </header>
 
-<div id="chat">
-  <div class="empty-state" id="empty">
-    <h2>Ask a legal question</h2>
-    <p>Searches NZ court decisions (13 courts including NZHC, NZCA, NZSC, NZFC, NZEnvC, NZERA, NZACC, NZTT and more) 2022-2024 plus NZ legislation. Not legal advice.</p>
-    <div class="suggestions">
-      <div class="suggestion" onclick="suggest(this)">Can a landlord evict for unpaid rent?</div>
-      <div class="suggestion" onclick="suggest(this)">What is unjustified dismissal?</div>
-      <div class="suggestion" onclick="suggest(this)">Test for granting an injunction?</div>
-      <div class="suggestion" onclick="suggest(this)">What is the test for reasonable excuse in contempt of court?</div>
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="showTab('ask')">Ask</button>
+  <button class="tab-btn" onclick="showTab('notable')">Notable Cases</button>
+</nav>
+
+<!-- ASK TAB -->
+<div id="tab-ask" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+  <div id="chat">
+    <div class="empty-state" id="empty">
+      <h2>Ask a legal question</h2>
+      <p>Searches NZ court decisions (13 courts including NZHC, NZCA, NZSC, NZFC, NZEnvC, NZERA, NZACC, NZTT and more) 2022-2024 plus NZ legislation. Not legal advice.</p>
+      <div class="suggestions">
+        <div class="suggestion" onclick="suggest(this)">Can a landlord evict for unpaid rent?</div>
+        <div class="suggestion" onclick="suggest(this)">What is unjustified dismissal?</div>
+        <div class="suggestion" onclick="suggest(this)">Test for granting an injunction?</div>
+        <div class="suggestion" onclick="suggest(this)">What is the test for reasonable excuse in contempt of court?</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ask-footer">
+    <div id="filters">
+      <label>Court:</label>
+      <select id="court">
+        <option value="">All courts</option>
+        <option value="NZSC">Supreme Court</option>
+        <option value="NZCA">Court of Appeal</option>
+        <option value="NZHC">High Court</option>
+        <option value="NZFC">Family Court</option>
+        <option value="NZEnvC">Environment Court</option>
+        <option value="NZERA">Employment Relations Authority</option>
+        <option value="NZEmpC">Employment Court</option>
+        <option value="NZACC">ACC Appeals</option>
+        <option value="NZCorC">Coroners Court</option>
+        <option value="NZHRRT">Human Rights Review Tribunal</option>
+        <option value="NZLCDT">Lawyers Disciplinary Tribunal</option>
+        <option value="NZREADT">Real Estate Agents Tribunal</option>
+        <option value="NZTT">Tenancy Tribunal</option>
+        <option value="NZLEG">Legislation</option>
+      </select>
+      <label>Year from:</label>
+      <input type="number" id="year_from" placeholder="2022" min="1960" max="2024" style="width:80px">
+      <label>to:</label>
+      <input type="number" id="year_to" placeholder="2024" min="1960" max="2024" style="width:80px">
+    </div>
+    <div class="input-row">
+      <textarea id="input" rows="1" placeholder="Ask a question about NZ law..." oninput="autoResize(this)"></textarea>
+      <button id="send" onclick="sendMessage()">Ask</button>
     </div>
   </div>
 </div>
 
-<footer>
-  <div id="filters">
-    <label>Court:</label>
-    <select id="court">
-      <option value="">All courts</option>
-      <option value="NZSC">Supreme Court</option>
-      <option value="NZCA">Court of Appeal</option>
-      <option value="NZHC">High Court</option>
-      <option value="NZFC">Family Court</option>
-      <option value="NZEnvC">Environment Court</option>
-      <option value="NZERA">Employment Relations Authority</option>
-      <option value="NZEmpC">Employment Court</option>
-      <option value="NZACC">ACC Appeals</option>
-      <option value="NZCorC">Coroners Court</option>
-      <option value="NZHRRT">Human Rights Review Tribunal</option>
-      <option value="NZLCDT">Lawyers Disciplinary Tribunal</option>
-      <option value="NZREADT">Real Estate Agents Tribunal</option>
-      <option value="NZTT">Tenancy Tribunal</option>
-      <option value="NZLEG">Legislation</option>
-    </select>
-    <label>Year from:</label>
-    <input type="number" id="year_from" placeholder="2022" min="1960" max="2024" style="width:80px">
-    <label>to:</label>
-    <input type="number" id="year_to" placeholder="2024" min="1960" max="2024" style="width:80px">
+<!-- NOTABLE CASES TAB -->
+<div id="tab-notable">
+  <div class="notable-panel">
+    <h2>Notable Cases</h2>
+
+    <div class="filter-card">
+      <h3>Flags (match any selected)</h3>
+      <div class="flag-grid" id="flag-checkboxes">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <div class="filter-card">
+      <h3>Penalty severity</h3>
+      <div class="penalty-row">
+        <div class="penalty-group">
+          <label>Criminal - OSI range (0.0 = discharge, 1.0 = life without parole)</label>
+          <div class="range-row">
+            <input type="number" id="min_osi" placeholder="min" step="0.05" min="0" max="1">
+            <span>to</span>
+            <input type="number" id="max_osi" placeholder="max" step="0.05" min="0" max="1">
+          </div>
+        </div>
+        <div class="penalty-group">
+          <label>Civil - recovery rate range (1.0 = full, &gt;1.0 = exemplary damages)</label>
+          <div class="range-row">
+            <input type="number" id="min_recovery" placeholder="min" step="0.1" min="0">
+            <span>to</span>
+            <input type="number" id="max_recovery" placeholder="max" step="0.1" min="0">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-card">
+      <h3>Court and date</h3>
+      <div class="notable-filter-row">
+        <label>Court:</label>
+        <select id="notable_court">
+          <option value="">All courts</option>
+          <option value="NZSC">Supreme Court</option>
+          <option value="NZCA">Court of Appeal</option>
+          <option value="NZHC">High Court</option>
+          <option value="NZFC">Family Court</option>
+          <option value="NZEnvC">Environment Court</option>
+          <option value="NZERA">Employment Relations Authority</option>
+          <option value="NZEmpC">Employment Court</option>
+          <option value="NZACC">ACC Appeals</option>
+          <option value="NZCorC">Coroners Court</option>
+          <option value="NZHRRT">Human Rights Review Tribunal</option>
+          <option value="NZLCDT">Lawyers Disciplinary Tribunal</option>
+          <option value="NZREADT">Real Estate Agents Tribunal</option>
+          <option value="NZTT">Tenancy Tribunal</option>
+        </select>
+        <label>Year from:</label>
+        <input type="number" id="notable_year_from" placeholder="2022" min="1960" max="2024" style="width:80px">
+        <label>to:</label>
+        <input type="number" id="notable_year_to" placeholder="2024" min="1960" max="2024" style="width:80px">
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn-search" id="notable-search-btn" onclick="searchNotable()">Search Notable Cases</button>
+        <button class="btn-clear" onclick="clearNotable()">Clear</button>
+      </div>
+    </div>
+
+    <div id="notable-results">
+      <div class="notable-empty">Select one or more filters above then click Search.</div>
+    </div>
   </div>
-  <div class="input-row">
-    <textarea id="input" rows="1" placeholder="Ask a question about NZ law..." oninput="autoResize(this)"></textarea>
-    <button id="send" onclick="sendMessage()">Ask</button>
-  </div>
-</footer>
+</div>
 
 <script>
-  const chat = document.getElementById('chat');
-  const input = document.getElementById('input');
+  // ---- Tab switching ----
+
+  function showTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.tab-btn[onclick="showTab('${name}')"]`).classList.add('active');
+    const askEl = document.getElementById('tab-ask');
+    const notEl = document.getElementById('tab-notable');
+    if (name === 'ask') {
+      askEl.style.display = 'flex';
+      notEl.style.display = 'none';
+    } else {
+      askEl.style.display = 'none';
+      notEl.style.display = 'block';
+    }
+  }
+
+  // ---- Flag definitions (must match ingest/flags.py FLAG_LABELS) ----
+
+  const FLAG_LABELS = {
+    "self_defence":              "Self-defence",
+    "provocation":               "Provocation",
+    "diminished_responsibility": "Diminished responsibility",
+    "necessity":                 "Necessity defence",
+    "duress":                    "Duress",
+    "mental_health":             "Mental health",
+    "intoxication":              "Intoxication",
+    "youth":                     "Youth / young person",
+    "tikanga_maori":             "Tikanga Maori",
+    "cultural_factors":          "Cultural factors",
+    "novel_argument":            "Novel legal argument",
+    "jurisdictional_challenge":  "Jurisdictional challenge",
+    "procedural_irregularity":   "Procedural irregularity",
+    "exemplary_damages":         "Exemplary damages",
+    "contempt":                  "Contempt of court",
+    "suppressed_identity":       "Suppressed identity",
+    "whistleblower":             "Whistleblower / protected disclosure",
+    "lack_of_motive":            "Lack of motive",
+    "self_represented":          "Self-represented party",
+  };
+
+  // Build flag checkboxes
+  (function buildFlagGrid() {
+    const grid = document.getElementById('flag-checkboxes');
+    for (const [key, label] of Object.entries(FLAG_LABELS)) {
+      const lbl = document.createElement('label');
+      const cb  = document.createElement('input');
+      cb.type  = 'checkbox';
+      cb.value = key;
+      cb.id    = 'flag_' + key;
+      lbl.appendChild(cb);
+      lbl.appendChild(document.createTextNode(label));
+      grid.appendChild(lbl);
+    }
+  })();
+
+  // ---- OSI helpers ----
+
+  function osiBadgeClass(osi) {
+    if (osi >= 0.80) return 'osi-severe';
+    if (osi >= 0.55) return 'osi-high';
+    if (osi >= 0.30) return 'osi-mid';
+    return 'osi-low';
+  }
+
+  function penaltyBadgeText(penalty) {
+    if (!penalty || !penalty.has_data) return null;
+    const ct = penalty.court_type;
+    if (ct === 'criminal') {
+      const osi = penalty.outcome_osi;
+      return `OSI ${osi.toFixed(2)} - ${penalty.outcome_label || ''}`;
+    }
+    if (ct === 'civil_financial' || ct === 'civil_mixed') {
+      if (penalty.recovery_rate != null) {
+        return `Recovery ${(penalty.recovery_rate * 100).toFixed(0)}%`;
+      }
+      if (penalty.awarded_amount != null) {
+        return `Awarded $${penalty.awarded_amount.toLocaleString()}`;
+      }
+      if (penalty.remedies && penalty.remedies.length) {
+        return penalty.remedies.join(', ');
+      }
+    }
+    if (ct === 'civil_nonfinancial') return penalty.outcome_class || 'outcome';
+    if (ct === 'coronal') return 'Coronial finding';
+    return null;
+  }
+
+  function cardBorderClass(penalty) {
+    if (!penalty || !penalty.has_data) return '';
+    if (penalty.court_type === 'criminal') return 'criminal';
+    if (['civil_financial', 'civil_mixed', 'civil_disciplinary'].includes(penalty.court_type)) return 'civil';
+    return '';
+  }
+
+  // ---- Notable Cases search ----
+
+  async function searchNotable() {
+    const btn = document.getElementById('notable-search-btn');
+    btn.disabled = true;
+    btn.textContent = 'Searching...';
+
+    const resultsEl = document.getElementById('notable-results');
+    resultsEl.innerHTML = '<div class="loading-dots">Searching...</div>';
+
+    const flags = Array.from(document.querySelectorAll('#flag-checkboxes input:checked')).map(cb => cb.value);
+    const minOsi      = document.getElementById('min_osi').value;
+    const maxOsi      = document.getElementById('max_osi').value;
+    const minRecovery = document.getElementById('min_recovery').value;
+    const maxRecovery = document.getElementById('max_recovery').value;
+    const court       = document.getElementById('notable_court').value;
+    const yearFrom    = document.getElementById('notable_year_from').value;
+    const yearTo      = document.getElementById('notable_year_to').value;
+
+    const body = { limit: 50 };
+    if (flags.length)     body.flags       = flags;
+    if (minOsi)           body.min_osi     = parseFloat(minOsi);
+    if (maxOsi)           body.max_osi     = parseFloat(maxOsi);
+    if (minRecovery)      body.min_recovery= parseFloat(minRecovery);
+    if (maxRecovery)      body.max_recovery= parseFloat(maxRecovery);
+    if (court)            body.courts      = [court];
+    if (yearFrom)         body.year_from   = parseInt(yearFrom);
+    if (yearTo)           body.year_to     = parseInt(yearTo);
+
+    try {
+      const res  = await fetch('/notable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        resultsEl.innerHTML = `<div class="notable-empty">Error: ${data.detail || 'Something went wrong.'}</div>`;
+        return;
+      }
+
+      if (!data.length) {
+        resultsEl.innerHTML = '<div class="notable-empty">No cases match these filters. Try broader criteria.</div>';
+        return;
+      }
+
+      let html = `<div class="notable-count">${data.length} case${data.length !== 1 ? 's' : ''} found</div>`;
+      for (const c of data) {
+        const penalty    = c.penalty || {};
+        const badgeText  = penaltyBadgeText(penalty);
+        const borderCls  = cardBorderClass(penalty);
+        const osiVal     = penalty.outcome_osi;
+        const badgeCls   = osiVal != null ? osiBadgeClass(osiVal) : 'osi-low';
+
+        // Gap annotation for criminal cases
+        let gapHtml = '';
+        if (penalty.gap != null && penalty.prosecution_label) {
+          const dir = penalty.gap_class === 'heavier' ? 'heavier than' : (penalty.gap_class === 'lighter' ? 'lighter than' : 'matches');
+          gapHtml = `<div class="penalty-line">Prosecution sought: <strong>${penalty.prosecution_label}</strong> (outcome ${dir} sought)</div>`;
+        }
+
+        // Flags pills
+        const pillsHtml = c.flags.length
+          ? `<div class="flag-pills">${c.flags.map(f => `<span class="flag-pill">${FLAG_LABELS[f] || f}</span>`).join('')}</div>`
+          : '';
+
+        html += `
+          <div class="notable-card ${borderCls}">
+            <div class="notable-card-header">
+              <div class="notable-card-title">
+                <a href="${c.url || '#'}" target="_blank">${c.title || c.case_id}</a>
+                <div class="notable-card-meta">${c.court_name} &bull; ${c.date || 'n/d'}</div>
+              </div>
+              ${badgeText ? `<span class="osi-badge ${badgeCls}">${badgeText}</span>` : ''}
+            </div>
+            ${gapHtml}
+            ${pillsHtml}
+          </div>`;
+      }
+      resultsEl.innerHTML = html;
+    } catch (e) {
+      resultsEl.innerHTML = '<div class="notable-empty">Could not reach the server. Is the API running?</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Search Notable Cases';
+    }
+  }
+
+  function clearNotable() {
+    document.querySelectorAll('#flag-checkboxes input').forEach(cb => cb.checked = false);
+    ['min_osi','max_osi','min_recovery','max_recovery','notable_year_from','notable_year_to'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('notable_court').value = '';
+    document.getElementById('notable-results').innerHTML =
+      '<div class="notable-empty">Select one or more filters above then click Search.</div>';
+  }
+
+  // ---- ASK TAB ----
+
+  const chat    = document.getElementById('chat');
+  const input   = document.getElementById('input');
   const sendBtn = document.getElementById('send');
 
   input.addEventListener('keydown', e => {
@@ -355,15 +896,15 @@
     showTyping();
 
     const body = { question: q };
-    const court = document.getElementById('court').value;
+    const court    = document.getElementById('court').value;
     const yearFrom = document.getElementById('year_from').value;
-    const yearTo = document.getElementById('year_to').value;
-    if (court) body.courts = [court];
+    const yearTo   = document.getElementById('year_to').value;
+    if (court)    body.courts    = [court];
     if (yearFrom) body.year_from = parseInt(yearFrom);
-    if (yearTo) body.year_to = parseInt(yearTo);
+    if (yearTo)   body.year_to   = parseInt(yearTo);
 
     try {
-      const res = await fetch('/ask', {
+      const res  = await fetch('/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

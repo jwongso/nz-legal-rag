@@ -31,6 +31,14 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+
+def _penalty_weight(r: "SearchResult") -> float:
+    """Sort key for notable case ranking: higher OSI/recovery_rate = more notable."""
+    p = r.payload.get("penalty", {})
+    osi = p.get("outcome_osi") or 0.0
+    rr  = min(p.get("recovery_rate") or 0.0, 1.5)
+    return max(osi, rr)
+
 import config
 
 
@@ -104,8 +112,10 @@ class VectorStore:
         courts: list[str] | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
+        flags: list[str] | None = None,
     ) -> list[SearchResult]:
-        must = []
+        must: list = []
+        should: list = []
 
         if courts:
             must.append(FieldCondition(key="court", match=MatchAny(any=courts)))
@@ -121,7 +131,16 @@ class VectorStore:
                 )
             )
 
-        query_filter = Filter(must=must) if must else None
+        # Flag filter: OR logic - chunks that contain any of the requested flags
+        if flags:
+            for f in flags:
+                should.append(FieldCondition(key="flags", match=MatchValue(value=f)))
+
+        query_filter = (
+            Filter(must=must or None, should=should or None)
+            if (must or should)
+            else None
+        )
 
         hits = self._client.query_points(
             collection_name=config.QDRANT_COLLECTION,
@@ -131,6 +150,84 @@ class VectorStore:
             with_payload=True,
         ).points
         return [SearchResult(h.payload, h.score) for h in hits]
+
+    def scroll_notable(
+        self,
+        flags: list[str] | None = None,
+        min_outcome_osi: float | None = None,
+        max_outcome_osi: float | None = None,
+        min_recovery_rate: float | None = None,
+        max_recovery_rate: float | None = None,
+        courts: list[str] | None = None,
+        year_from: int | None = None,
+        year_to: int | None = None,
+        limit: int = 50,
+    ) -> list[SearchResult]:
+        """Scroll Qdrant with flag/penalty filters. Deduplicates to 1 chunk per case_id."""
+        must: list = []
+        should: list = []
+
+        if courts:
+            must.append(FieldCondition(key="court", match=MatchAny(any=courts)))
+
+        if year_from is not None or year_to is not None:
+            must.append(FieldCondition(
+                key="year",
+                range=Range(
+                    gte=year_from if year_from is not None else 1900,
+                    lte=year_to if year_to is not None else 2100,
+                ),
+            ))
+
+        if min_outcome_osi is not None or max_outcome_osi is not None:
+            must.append(FieldCondition(
+                key="penalty.outcome_osi",
+                range=Range(
+                    gte=min_outcome_osi if min_outcome_osi is not None else 0.0,
+                    lte=max_outcome_osi if max_outcome_osi is not None else 1.0,
+                ),
+            ))
+
+        if min_recovery_rate is not None or max_recovery_rate is not None:
+            must.append(FieldCondition(
+                key="penalty.recovery_rate",
+                range=Range(
+                    gte=min_recovery_rate if min_recovery_rate is not None else 0.0,
+                    lte=max_recovery_rate if max_recovery_rate is not None else 99999.0,
+                ),
+            ))
+
+        if flags:
+            for f in flags:
+                should.append(FieldCondition(key="flags", match=MatchValue(value=f)))
+
+        query_filter = (
+            Filter(must=must or None, should=should or None)
+            if (must or should)
+            else None
+        )
+
+        # Fetch limit*4 candidates to have room after dedup
+        raw, _ = self._client.scroll(
+            collection_name=config.QDRANT_COLLECTION,
+            scroll_filter=query_filter,
+            limit=limit * 4,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        results = [SearchResult(r.payload, 1.0) for r in raw]
+
+        # Dedup: 1 chunk per case_id - keep the one with the highest penalty weight
+        seen: dict[str, SearchResult] = {}
+        for r in results:
+            cid = r.case_id
+            if cid not in seen or _penalty_weight(r) > _penalty_weight(seen[cid]):
+                seen[cid] = r
+
+        # Sort by penalty weight descending
+        deduped = sorted(seen.values(), key=_penalty_weight, reverse=True)
+        return deduped[:limit]
 
     def get_by_case_id(self, case_id: str) -> list[SearchResult]:
         results, _ = self._client.scroll(

@@ -47,6 +47,7 @@ class AskRequest(BaseModel):
     year_from: int | None = None
     year_to: int | None = None
     top_k: int = config.TOP_K
+    flags: list[str] | None = None
 
 
 class AskResponse(BaseModel):
@@ -78,6 +79,7 @@ async def ask(req: AskRequest) -> AskResponse:
         courts=req.courts,
         year_from=req.year_from,
         year_to=req.year_to,
+        flags=req.flags or None,
     )
     return AskResponse(
         question=response.question,
@@ -120,6 +122,56 @@ async def search(
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "collection": config.QDRANT_COLLECTION}
+
+
+class NotableRequest(BaseModel):
+    flags: list[str] | None = None
+    min_osi: float | None = None
+    max_osi: float | None = None
+    min_recovery: float | None = None
+    max_recovery: float | None = None
+    courts: list[str] | None = None
+    year_from: int | None = None
+    year_to: int | None = None
+    limit: int = 30
+
+
+class NotableResult(BaseModel):
+    case_id: str
+    title: str
+    court_name: str
+    date: str
+    url: str
+    flags: list[str]
+    penalty: dict
+
+
+@app.post("/notable", response_model=list[NotableResult])
+async def notable(req: NotableRequest) -> list[NotableResult]:
+    """Filter notable cases by flags and penalty severity. No question needed."""
+    hits = _pipeline.search_notable(
+        flags=req.flags or None,
+        min_outcome_osi=req.min_osi,
+        max_outcome_osi=req.max_osi,
+        min_recovery_rate=req.min_recovery,
+        max_recovery_rate=req.max_recovery,
+        courts=req.courts or None,
+        year_from=req.year_from,
+        year_to=req.year_to,
+        limit=min(req.limit, 100),
+    )
+    return [
+        NotableResult(
+            case_id=h.case_id,
+            title=h.title,
+            court_name=h.court_name,
+            date=h.date,
+            url=h.url,
+            flags=h.payload.get("flags") or [],
+            penalty=h.payload.get("penalty") or {},
+        )
+        for h in hits
+    ]
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ class RAGPipeline:
         courts: list[str] | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
+        flags: list[str] | None = None,
     ) -> RAGResponse:
         query_vector = await self._embedder.embed(question)
 
@@ -52,6 +53,7 @@ class RAGPipeline:
             courts=courts,
             year_from=year_from,
             year_to=year_to,
+            flags=flags,
         )
 
         if not raw_hits:
@@ -102,13 +104,41 @@ class RAGPipeline:
         courts: list[str] | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
+        flags: list[str] | None = None,
     ) -> list[SearchResult]:
         query_vector = await self._embedder.embed(query)
-        hits = self._store.search(query_vector, top_k=top_k * 3, courts=courts, year_from=year_from, year_to=year_to)
+        hits = self._store.search(
+            query_vector, top_k=top_k * 3,
+            courts=courts, year_from=year_from, year_to=year_to, flags=flags,
+        )
         hits = _deduplicate(hits, top_k)
         if self._reranker is not None:
             hits = self._reranker.rerank(query, hits, top_k)
         return hits
+
+    def search_notable(
+        self,
+        flags: list[str] | None = None,
+        min_outcome_osi: float | None = None,
+        max_outcome_osi: float | None = None,
+        min_recovery_rate: float | None = None,
+        max_recovery_rate: float | None = None,
+        courts: list[str] | None = None,
+        year_from: int | None = None,
+        year_to: int | None = None,
+        limit: int = 50,
+    ) -> list[SearchResult]:
+        return self._store.scroll_notable(
+            flags=flags,
+            min_outcome_osi=min_outcome_osi,
+            max_outcome_osi=max_outcome_osi,
+            min_recovery_rate=min_recovery_rate,
+            max_recovery_rate=max_recovery_rate,
+            courts=courts,
+            year_from=year_from,
+            year_to=year_to,
+            limit=limit,
+        )
 
     async def close(self) -> None:
         await self._embedder.close()
