@@ -36,9 +36,20 @@ def _limit_threads(n: int) -> None:
         pass
 
 
-async def run(court: str, years: list[int], max_per_year: int) -> None:
-    embedder = Embedder()
-    store = VectorStore()
+async def run(
+    court: str,
+    years: list[int],
+    max_per_year: int,
+    _embedder: "Embedder | None" = None,
+    _store: "VectorStore | None" = None,
+) -> int:
+    """Ingest one court + year list. Returns total chunks indexed.
+
+    Pass _embedder and _store to reuse across calls (avoids reloading the
+    embedding model for each year when running batch ingestion).
+    """
+    embedder = _embedder or Embedder()
+    store = _store or VectorStore()
     store.ensure_collection()
 
     total_chunks = 0
@@ -71,11 +82,12 @@ async def run(court: str, years: list[int], max_per_year: int) -> None:
         try:
             store.upsert(vectors, payloads)
             total_chunks += len(chunks)
-            print(f"  [{doc.case_id}] {doc.title[:60]} -> {len(chunks)} chunks")
+            print(f"  [{doc.case_id}] {doc.title[:60]} -> {len(chunks)} chunks", flush=True)
         except Exception as e:
-            print(f"  [{doc.case_id}] SKIP - upsert failed: {e}")
+            print(f"  [{doc.case_id}] SKIP - upsert failed: {e}", flush=True)
 
-    print(f"\nDone. Indexed {total_chunks} chunks from {court} {years}.")
+    print(f"\nDone. Indexed {total_chunks} chunks from {court} {years}.", flush=True)
+    return total_chunks
 
 
 def main() -> None:
@@ -87,6 +99,7 @@ def main() -> None:
     args = parser.parse_args()
     _limit_threads(args.threads)
     asyncio.run(run(args.court, args.years, args.max_per_year))
+    # Note: run() now returns chunk count but main() ignores it (CLI use only)
 
 
 if __name__ == "__main__":
