@@ -282,8 +282,8 @@ Available tools:
 
 This project runs on a single machine with a consumer GPU. No Blackwell required.
 
-Current inference: llama-server with Qwen3.6-35B-A3B (MoE, only 3B active params per
-token). 14 GPU layers, 4096 context. Handles legal Q&A well within these constraints.
+Current inference: llama-server with Qwen3.6-35B-A3B-UD-Q5_K_M (Unsloth Dynamic 5-bit,
+MTP-capable). 10 GPU layers, 4096 context. MTP disabled due to 8GB VRAM headroom.
 
 Embeddings: nomic-embed-text-v1.5 via sentence-transformers, running in-process on CPU.
 No Ollama server required. Thread count is capped at 16 during ingest to leave headroom
