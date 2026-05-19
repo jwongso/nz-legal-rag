@@ -142,6 +142,15 @@ All sources are publicly available. No proprietary data is required.
 
 ---
 
+## Live demo
+
+https://nz-legal-rag.localrun.ai
+
+On-premise instance running on local hardware, exposed via Cloudflare Tunnel.
+No data leaves the machine - the tunnel only carries HTTP traffic to the UI.
+
+---
+
 ## Quick start
 
 ### 1. Start infrastructure

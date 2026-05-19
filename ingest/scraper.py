@@ -95,6 +95,16 @@ def _pdf_url_from_html(html: str, base_url: str) -> str | None:
     return None
 
 
+def _is_pdf_wrapper(html: str) -> bool:
+    """Return True if this page embeds a PDF as primary content via <object> tag.
+
+    Old NZLII pages (pre-~2000) store decision text as PDFs and serve only a
+    metadata wrapper in HTML. Detecting the <object> embed is more reliable than
+    checking court membership, since coverage varies by year.
+    """
+    return bool(re.search(r'<object[^>]+data="[^"]+\.pdf"', html, re.I))
+
+
 def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
     """Extract plain text from PDF bytes using pypdf."""
     try:
@@ -217,9 +227,11 @@ async def scrape_court(
             if not html:
                 continue
 
-            # PDF courts: extract text from PDF, cache alongside HTML
+            # PDF extraction: always attempt if page embeds PDF as primary content.
+            # Old NZLII pages (pre-~2000) use <object data="...pdf"> wrappers for
+            # any court. _PDF_COURTS is kept for courts that are always PDF-only.
             pdf_text = ""
-            if court in _PDF_COURTS:
+            if court in _PDF_COURTS or _is_pdf_wrapper(html):
                 pdf_cache = cache_file.with_suffix(".pdf.txt")
                 if pdf_cache.exists():
                     pdf_text = pdf_cache.read_text(encoding="utf-8")
@@ -232,6 +244,12 @@ async def scrape_court(
                             pdf_text = _extract_text_from_pdf(pdf_bytes)
                             if pdf_text:
                                 pdf_cache.write_text(pdf_text, encoding="utf-8")
+
+            # Skip wrapper pages where PDF extraction failed - they contain only
+            # navigation breadcrumbs and are not useful for retrieval.
+            is_wrapper = court in _PDF_COURTS or _is_pdf_wrapper(html)
+            if is_wrapper and not pdf_text:
+                continue
 
             doc = _parse_html(html, url, court, year, pdf_text=pdf_text)
             if doc and len(doc.text) > 200:

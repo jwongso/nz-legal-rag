@@ -97,7 +97,25 @@
       color: #1a1a2e;
       border-bottom-left-radius: 4px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      position: relative;
     }
+
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      color: #aaa;
+      font-size: 0.85rem;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .copy-btn:hover { color: #1a1a2e; background: #f0f0f0; }
+    .copy-btn.copied { color: #2ecc71; }
 
     .sources {
       margin-top: 10px;
@@ -1450,6 +1468,22 @@
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.textContent = text;
+
+    if (role === 'assistant') {
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'copy-btn';
+      copyBtn.title = 'Copy response';
+      copyBtn.innerHTML = '&#128203;';
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.classList.add('copied');
+          copyBtn.innerHTML = '&#10003;';
+          setTimeout(() => { copyBtn.classList.remove('copied'); copyBtn.innerHTML = '&#128203;'; }, 1500);
+        });
+      });
+      bubble.appendChild(copyBtn);
+    }
+
     msg.appendChild(bubble);
 
     if (role === 'assistant') {
