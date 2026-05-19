@@ -292,6 +292,115 @@ for the inference server. Not a bottleneck at the scales NZ legal corpus require
 
 ---
 
+## Tracker endpoints (Westlaw-comparable)
+
+These structured-data endpoints compete directly with Westlaw NZ's premium tracker products,
+delivered on-premise with no per-user SaaS fee.
+
+| This project | Westlaw NZ equivalent |
+|---|---|
+| `POST /sentencing-tracker` | Sentencing Tracker |
+| `POST /pg-tracker` | Personal Grievance Tracker |
+| `POST /notable` (OSI + flags) | OSH Tracker / Resource Management Tracker |
+
+### Sentencing Tracker (`POST /sentencing-tracker`)
+
+Extracts structured criminal sentencing factors from NZHC, NZCA and NZSC decisions.
+
+Payload fields extracted per chunk (stored under `sentencing.*` in Qdrant):
+
+| Field | Type | Description |
+|---|---|---|
+| `starting_point_months` | float | Judicial starting point before discounts |
+| `final_sentence_months` | float | Imprisonment term actually imposed |
+| `home_detention_months` | float | Home detention term |
+| `community_work_hours` | int | Community work hours ordered |
+| `reparation_amount` | float | Reparation ordered ($) |
+| `fine_amount` | float | Fine imposed ($) |
+| `guilty_plea_discount_pct` | float | Discount % applied for guilty plea (5-50) |
+| `sentence_type` | keyword | imprisonment / home_detention / community_work / fine / supervision |
+| `has_guilty_plea` | bool | Guilty plea present in the text |
+| `has_remorse` | bool | Remorse expressed |
+| `has_previous_convictions` | bool | Prior convictions positively stated |
+
+Filter by: offence flags, courts, year range, sentence type, starting point range,
+final sentence range, guilty plea presence.
+
+UI: Sentencing Tracker tab computes and displays median starting point, median sentence,
+and median guilty plea discount across results.
+
+Backfill: `python -m ingest.sentencing_pipeline`
+
+### Personal Grievance Tracker (`POST /pg-tracker`)
+
+Extracts ERA / NZEmpC personal grievance outcome data.
+
+Payload fields extracted per chunk (stored under `pg.*` in Qdrant):
+
+| Field | Type | Description |
+|---|---|---|
+| `grievance_types` | keyword[] | unjustified_dismissal, constructive_dismissal, disadvantage, harassment, discrimination, unjustified_action |
+| `reinstatement_ordered` | bool | True = ordered, False = declined |
+| `contributory_conduct_pct` | float | Reduction % for employee's own conduct |
+| `has_contributory_conduct` | bool | Discussed but % not parsed |
+
+Filter by: grievance type, reinstatement outcome, contributory conduct range,
+compensation range (uses `penalty.awarded_amount`), court, year.
+
+UI: PG Tracker tab shows reinstatement rate, median compensation, median contributory conduct.
+
+Backfill: `python -m ingest.pg_pipeline`
+
+---
+
+## Counsel extraction
+
+Appearances block extracted from all decisions and stored under `counsel.*` in Qdrant.
+
+| Field | Type | Description |
+|---|---|---|
+| `has_data` | bool | Appearances block found |
+| `all_names` | keyword[] | All counsel full names |
+| `all_surnames` | keyword[] | Surnames only (for fuzzy search) |
+| `crown` | keyword[] | Crown / prosecution counsel |
+| `defence` | keyword[] | Defence / appellant counsel |
+| `entries` | list | Structured [{names, role}] entries |
+
+Searchable via the Notable Cases tab "Counsel" filter or the `/notable` endpoint.
+
+Backfill: `python -m ingest.counsel_pipeline`
+
+---
+
+## Flag and penalty system
+
+Every chunk carries `flags` (list of matched categories) and `penalty` (structured outcome data).
+
+### Flags (19 categories)
+
+Detected by regex in `ingest/flags.py`. Used across all tracker endpoints as an OR filter.
+
+Criminal-relevant: self_defence, provocation, diminished_responsibility, necessity, duress,
+mental_health, intoxication, youth, tikanga_maori, cultural_factors, lack_of_motive,
+suppressed_identity, jurisdictional_challenge, novel_argument, procedural_irregularity.
+
+Civil/general: exemplary_damages, contempt, whistleblower, self_represented.
+
+### Penalty fields (`penalty.*`)
+
+| Field | Description |
+|---|---|
+| `court_type` | criminal / civil_financial / civil_nonfinancial / civil_mixed / coronal / civil_disciplinary |
+| `outcome_osi` | Criminal Outcome Severity Index (0.0 discharge to 1.0 life without parole) |
+| `awarded_amount` | Civil monetary award ($) |
+| `recovery_rate` | awarded / claimed (>1.0 = exemplary damages) |
+| `recovery_class` | full_recovery / partial / exemplary |
+
+Backfill: `python -m ingest.flag_pipeline`
+Civil aggregation: `python -m ingest.recovery_agg`
+
+---
+
 ## Roadmap
 
 ### Done
@@ -299,25 +408,33 @@ for the inference server. Not a bottleneck at the scales NZ legal corpus require
 - [x] PDF extraction for Tenancy Tribunal decisions (HTML pages are metadata wrappers)
 - [x] Section-aware legal document chunker (120-word windows, 20-word minimum)
 - [x] Qdrant ingestion pipeline with metadata filtering and deterministic UUID5 IDs
-- [x] 75,000+ chunks indexed across 6 courts, 2022-2024
+- [x] 182,000+ chunks indexed across 13 courts, 2022-2024
 - [x] RAG pipeline with citation grounding
 - [x] MCP server for Claude Code / Claude Desktop
 - [x] FastAPI REST interface with web chat UI
 - [x] RAGAS evaluation harness with NZ legal Q&A benchmark
-
-### Near-term (current hardware)
 - [x] Cross-encoder reranker (bge-reranker-v2-m3, CPU) - significant precision improvement
 - [x] Case deduplication in retrieval - one chunk per case, diverse context window
+- [x] Flag system (19 categories, regex-based, OR filter across all endpoints)
+- [x] Penalty extraction: criminal OSI scale + civil awarded amount + recovery rate
+- [x] Notable Cases endpoint (`POST /notable`) - filter by flags, OSI, compensation, counsel
+- [x] Counsel / appearances extraction and Qdrant indexing
+- [x] Sentencing Tracker (`POST /sentencing-tracker`) - starting point, final sentence, GP discount
+- [x] Personal Grievance Tracker (`POST /pg-tracker`) - reinstatement, contributory conduct, compensation
+
+### Near-term (current hardware)
 - [ ] legislation.govt.nz statute ingestion
 - [ ] Synthetic Q&A generation from ingested corpus (Claude API, knowledge distillation)
 - [ ] Ingest progress tracking (crash-resume for long runs)
 - [ ] Expand eval benchmark to 50+ questions
+- [ ] Counterfactual "What if?" endpoint using extended thinking mode
 
 ### Once AMD Ryzen AI Max+ 395 cluster is available (early 2027)
 - [ ] LoRA fine-tuning on NZ legal Q&A dataset (Node 2, 128GB unified memory)
 - [ ] Serve full Qwen3-72B with all layers on GPU (Node 1)
 - [ ] Dedicated Qdrant + Ollama on Node 3 (persistent storage node)
 - [ ] Case citation graph: cross-link related decisions automatically
+- [ ] LLM-based penalty extraction for complex sentences (improves recovery rate coverage)
 
 ### Once Blackwell is affordable
 - [ ] vLLM with speculative decoding for sub-second TTFT

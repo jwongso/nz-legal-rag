@@ -478,6 +478,144 @@
       padding: 30px 0;
       font-size: 0.9rem;
     }
+
+    /* --- TRACKER TABS (Sentencing / PG) --- */
+
+    .tracker-desc {
+      font-size: 0.84rem;
+      color: #718096;
+      margin-bottom: 18px;
+      line-height: 1.5;
+    }
+
+    .stats-box {
+      background: #ebf8ff;
+      border: 1px solid #bee3f8;
+      border-radius: 10px;
+      padding: 14px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #2b6cb0;
+    }
+
+    .stat-value {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1a365d;
+    }
+
+    .sent-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      margin-bottom: 12px;
+      border-left: 3px solid #e53e3e;
+    }
+
+    .pg-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      margin-bottom: 12px;
+      border-left: 3px solid #38a169;
+    }
+
+    .sent-card-header, .pg-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .sent-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      font-size: 0.82rem;
+      color: #4a5568;
+      margin-bottom: 8px;
+    }
+
+    .sent-fact strong { color: #2d3748; }
+
+    .badge-gp {
+      font-size: 0.75rem;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-weight: 600;
+      background: #c6f6d5;
+      color: #276749;
+    }
+
+    .badge-sentence {
+      font-size: 0.75rem;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-weight: 600;
+      background: #fff5f5;
+      color: #c53030;
+    }
+
+    .badge-reinstate {
+      font-size: 0.75rem;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-weight: 600;
+      background: #c6f6d5;
+      color: #276749;
+    }
+
+    .badge-no-reinstate {
+      font-size: 0.75rem;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-weight: 600;
+      background: #fff5f5;
+      color: #c53030;
+    }
+
+    .pg-types {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 8px;
+    }
+
+    .pg-type-pill {
+      font-size: 0.72rem;
+      padding: 2px 9px;
+      background: #e6fffa;
+      color: #234e52;
+      border-radius: 12px;
+    }
+
+    .select-sm {
+      padding: 6px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-family: inherit;
+      background: #f8fafc;
+      color: #333;
+    }
   </style>
 </head>
 <body>
@@ -490,6 +628,8 @@
 <nav class="tab-nav">
   <button class="tab-btn active" onclick="showTab('ask')">Ask</button>
   <button class="tab-btn" onclick="showTab('notable')">Notable Cases</button>
+  <button class="tab-btn" onclick="showTab('sentencing')">Sentencing Tracker</button>
+  <button class="tab-btn" onclick="showTab('pg')">PG Tracker</button>
 </nav>
 
 <!-- ASK TAB -->
@@ -638,21 +778,446 @@
   </div>
 </div>
 
+<!-- SENTENCING TRACKER TAB -->
+<div id="tab-sentencing" style="display:none;flex:1;overflow-y:auto;padding:24px;">
+  <div class="notable-panel">
+    <h2>Sentencing Tracker</h2>
+    <p class="tracker-desc">Criminal sentencing factors from NZHC, NZCA and NZSC decisions. Comparable to Westlaw NZ Sentencing Tracker. Includes starting point, final sentence, guilty plea discount and more.</p>
+
+    <div class="filter-card">
+      <h3>Offence flags (match any selected)</h3>
+      <div class="flag-grid">
+        <label><input type="checkbox" value="self_defence"              class="sent-flag-cb"> Self-defence</label>
+        <label><input type="checkbox" value="provocation"               class="sent-flag-cb"> Provocation</label>
+        <label><input type="checkbox" value="diminished_responsibility" class="sent-flag-cb"> Diminished responsibility</label>
+        <label><input type="checkbox" value="necessity"                 class="sent-flag-cb"> Necessity defence</label>
+        <label><input type="checkbox" value="duress"                    class="sent-flag-cb"> Duress</label>
+        <label><input type="checkbox" value="mental_health"             class="sent-flag-cb"> Mental health</label>
+        <label><input type="checkbox" value="intoxication"              class="sent-flag-cb"> Intoxication</label>
+        <label><input type="checkbox" value="youth"                     class="sent-flag-cb"> Youth / young person</label>
+        <label><input type="checkbox" value="tikanga_maori"             class="sent-flag-cb"> Tikanga Maori</label>
+        <label><input type="checkbox" value="cultural_factors"          class="sent-flag-cb"> Cultural factors</label>
+        <label><input type="checkbox" value="novel_argument"            class="sent-flag-cb"> Novel legal argument</label>
+        <label><input type="checkbox" value="jurisdictional_challenge"  class="sent-flag-cb"> Jurisdictional challenge</label>
+        <label><input type="checkbox" value="suppressed_identity"       class="sent-flag-cb"> Suppressed identity</label>
+        <label><input type="checkbox" value="lack_of_motive"            class="sent-flag-cb"> Lack of motive</label>
+      </div>
+    </div>
+
+    <div class="filter-card">
+      <h3>Sentence details</h3>
+      <div class="penalty-row">
+        <div class="penalty-group">
+          <label>Sentence type</label>
+          <select class="select-sm" id="sent_type">
+            <option value="">Any</option>
+            <option value="imprisonment">Imprisonment</option>
+            <option value="home_detention">Home detention</option>
+            <option value="community_work">Community work</option>
+            <option value="fine">Fine only</option>
+            <option value="supervision">Supervision</option>
+          </select>
+        </div>
+        <div class="penalty-group">
+          <label>Starting point (months)</label>
+          <div class="range-row">
+            <input type="number" id="sent_min_sp" placeholder="min" min="0" step="6">
+            <span>to</span>
+            <input type="number" id="sent_max_sp" placeholder="max" min="0" step="6">
+          </div>
+        </div>
+        <div class="penalty-group">
+          <label>Final sentence (months)</label>
+          <div class="range-row">
+            <input type="number" id="sent_min_fs" placeholder="min" min="0" step="6">
+            <span>to</span>
+            <input type="number" id="sent_max_fs" placeholder="max" min="0" step="6">
+          </div>
+        </div>
+        <div class="penalty-group">
+          <label>Guilty plea</label>
+          <select class="select-sm" id="sent_gp">
+            <option value="">Any</option>
+            <option value="yes">Yes (guilty plea)</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-card">
+      <h3>Court and date</h3>
+      <div class="notable-filter-row">
+        <label>Court:</label>
+        <select class="select-sm" id="sent_court">
+          <option value="">All criminal courts</option>
+          <option value="NZSC">Supreme Court</option>
+          <option value="NZCA">Court of Appeal</option>
+          <option value="NZHC">High Court</option>
+        </select>
+        <label>Year from:</label>
+        <input type="number" id="sent_year_from" placeholder="2022" min="1960" max="2024" style="width:80px;" class="select-sm">
+        <label>to:</label>
+        <input type="number" id="sent_year_to" placeholder="2024" min="1960" max="2024" style="width:80px;" class="select-sm">
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn-search" id="sent-search-btn" onclick="searchSentencing()">Search Sentencing Tracker</button>
+        <button class="btn-clear" onclick="clearSentencing()">Clear</button>
+      </div>
+    </div>
+
+    <div id="sentencing-results">
+      <div class="notable-empty">Select filters above then click Search.</div>
+    </div>
+  </div>
+</div>
+
+<!-- PG TRACKER TAB -->
+<div id="tab-pg" style="display:none;flex:1;overflow-y:auto;padding:24px;">
+  <div class="notable-panel">
+    <h2>Personal Grievance Tracker</h2>
+    <p class="tracker-desc">Employment Relations Authority and Employment Court personal grievance outcomes. Comparable to Westlaw NZ Personal Grievance Tracker. Filter by grievance type, reinstatement, compensation and contributory conduct.</p>
+
+    <div class="filter-card">
+      <h3>Grievance type (match any selected)</h3>
+      <div class="flag-grid">
+        <label><input type="checkbox" value="unjustified_dismissal" class="pg-type-cb"> Unjustified dismissal</label>
+        <label><input type="checkbox" value="constructive_dismissal" class="pg-type-cb"> Constructive dismissal</label>
+        <label><input type="checkbox" value="disadvantage" class="pg-type-cb"> Disadvantage / good faith breach</label>
+        <label><input type="checkbox" value="harassment" class="pg-type-cb"> Harassment</label>
+        <label><input type="checkbox" value="discrimination" class="pg-type-cb"> Discrimination</label>
+        <label><input type="checkbox" value="unjustified_action" class="pg-type-cb"> Unjustified action</label>
+      </div>
+    </div>
+
+    <div class="filter-card">
+      <h3>Outcome filters</h3>
+      <div class="penalty-row">
+        <div class="penalty-group">
+          <label>Reinstatement</label>
+          <select class="select-sm" id="pg_reinstatement">
+            <option value="">Any</option>
+            <option value="yes">Ordered</option>
+            <option value="no">Declined / not ordered</option>
+          </select>
+        </div>
+        <div class="penalty-group">
+          <label>Contributory conduct (%)</label>
+          <div class="range-row">
+            <input type="number" id="pg_min_contrib" placeholder="min" min="0" max="100" step="5">
+            <span>to</span>
+            <input type="number" id="pg_max_contrib" placeholder="max" min="0" max="100" step="5">
+          </div>
+        </div>
+        <div class="penalty-group">
+          <label>Compensation awarded ($)</label>
+          <div class="range-row">
+            <input type="number" id="pg_min_comp" placeholder="min" min="0" step="1000">
+            <span>to</span>
+            <input type="number" id="pg_max_comp" placeholder="max" min="0" step="1000">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-card">
+      <h3>Court and date</h3>
+      <div class="notable-filter-row">
+        <label>Court:</label>
+        <select class="select-sm" id="pg_court">
+          <option value="">ERA and Employment Court</option>
+          <option value="NZERA">Employment Relations Authority</option>
+          <option value="NZEmpC">Employment Court</option>
+        </select>
+        <label>Year from:</label>
+        <input type="number" id="pg_year_from" placeholder="2022" min="1960" max="2024" style="width:80px;" class="select-sm">
+        <label>to:</label>
+        <input type="number" id="pg_year_to" placeholder="2024" min="1960" max="2024" style="width:80px;" class="select-sm">
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn-search" id="pg-search-btn" onclick="searchPG()">Search PG Tracker</button>
+        <button class="btn-clear" onclick="clearPG()">Clear</button>
+      </div>
+    </div>
+
+    <div id="pg-results">
+      <div class="notable-empty">Select filters above then click Search.</div>
+    </div>
+  </div>
+</div>
+
 <script>
   // ---- Tab switching ----
+
+  const _TAB_IDS = ['ask', 'notable', 'sentencing', 'pg'];
 
   function showTab(name) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelector(`.tab-btn[onclick="showTab('${name}')"]`).classList.add('active');
-    const askEl = document.getElementById('tab-ask');
-    const notEl = document.getElementById('tab-notable');
-    if (name === 'ask') {
-      askEl.style.display = 'flex';
-      notEl.style.display = 'none';
-    } else {
-      askEl.style.display = 'none';
-      notEl.style.display = 'block';
+    _TAB_IDS.forEach(id => {
+      const el = document.getElementById('tab-' + id);
+      if (!el) return;
+      el.style.display = (id === name) ? (id === 'ask' ? 'flex' : 'block') : 'none';
+    });
+  }
+
+  // ---- Sentencing Tracker ----
+
+  function _median(arr) {
+    if (!arr.length) return null;
+    const s = arr.slice().sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  function _fmtMonths(m) {
+    if (m == null) return 'n/a';
+    const y = Math.floor(m / 12);
+    const mo = Math.round(m % 12);
+    if (y === 0) return `${mo}m`;
+    if (mo === 0) return `${y}y`;
+    return `${y}y ${mo}m`;
+  }
+
+  function _sentBadge(s) {
+    const st = s.sentence_type;
+    if (!st) return '';
+    const labels = {
+      imprisonment: 'Imprisonment', home_detention: 'Home detention',
+      community_work: 'Community work', fine: 'Fine', supervision: 'Supervision',
+    };
+    return `<span class="badge-sentence">${labels[st] || st}</span>`;
+  }
+
+  async function searchSentencing() {
+    const btn = document.getElementById('sent-search-btn');
+    btn.disabled = true; btn.textContent = 'Searching...';
+    const el = document.getElementById('sentencing-results');
+    el.innerHTML = '<div class="loading-dots">Searching...</div>';
+
+    const flags = Array.from(document.querySelectorAll('.sent-flag-cb:checked')).map(c => c.value);
+    const sentType  = document.getElementById('sent_type').value;
+    const minSp     = document.getElementById('sent_min_sp').value;
+    const maxSp     = document.getElementById('sent_max_sp').value;
+    const minFs     = document.getElementById('sent_min_fs').value;
+    const maxFs     = document.getElementById('sent_max_fs').value;
+    const gpSel     = document.getElementById('sent_gp').value;
+    const court     = document.getElementById('sent_court').value;
+    const yearFrom  = document.getElementById('sent_year_from').value;
+    const yearTo    = document.getElementById('sent_year_to').value;
+
+    const body = { limit: 50 };
+    if (flags.length)  body.flags = flags;
+    if (sentType)      body.sentence_type = sentType;
+    if (minSp)         body.min_starting_point = parseFloat(minSp);
+    if (maxSp)         body.max_starting_point = parseFloat(maxSp);
+    if (minFs)         body.min_final_sentence = parseFloat(minFs);
+    if (maxFs)         body.max_final_sentence = parseFloat(maxFs);
+    if (gpSel === 'yes') body.has_guilty_plea = true;
+    if (gpSel === 'no')  body.has_guilty_plea = false;
+    if (court)         body.courts = [court];
+    if (yearFrom)      body.year_from = parseInt(yearFrom);
+    if (yearTo)        body.year_to   = parseInt(yearTo);
+
+    try {
+      const res  = await fetch('/sentencing-tracker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        el.innerHTML = `<div class="notable-empty">Error: ${data.detail || 'Something went wrong.'}</div>`;
+        return;
+      }
+      if (!data.length) {
+        el.innerHTML = '<div class="notable-empty">No cases match these filters. Try broader criteria.</div>';
+        return;
+      }
+
+      // Compute stats
+      const sps  = data.map(c => c.sentencing.starting_point_months).filter(v => v != null);
+      const fss  = data.map(c => c.sentencing.final_sentence_months).filter(v => v != null);
+      const disc = data.map(c => c.sentencing.guilty_plea_discount_pct).filter(v => v != null);
+      const hdms = data.map(c => c.sentencing.home_detention_months).filter(v => v != null);
+
+      let statsHtml = `<div class="stats-box">
+        <div class="stat-item"><span class="stat-label">Cases</span><span class="stat-value">${data.length}</span></div>`;
+      if (sps.length)  statsHtml += `<div class="stat-item"><span class="stat-label">Median starting point</span><span class="stat-value">${_fmtMonths(_median(sps))}</span></div>`;
+      if (fss.length)  statsHtml += `<div class="stat-item"><span class="stat-label">Median imprisonment</span><span class="stat-value">${_fmtMonths(_median(fss))}</span></div>`;
+      if (hdms.length) statsHtml += `<div class="stat-item"><span class="stat-label">Median home detention</span><span class="stat-value">${_fmtMonths(_median(hdms))}</span></div>`;
+      if (disc.length) statsHtml += `<div class="stat-item"><span class="stat-label">Median GP discount</span><span class="stat-value">${_median(disc).toFixed(0)}%</span></div>`;
+      statsHtml += '</div>';
+
+      let cardsHtml = `<div class="notable-count">${data.length} case${data.length !== 1 ? 's' : ''} found</div>`;
+      for (const c of data) {
+        const s = c.sentencing || {};
+        const sentFacts = [];
+        if (s.starting_point_months != null) sentFacts.push(`<span class="sent-fact"><strong>Start:</strong> ${_fmtMonths(s.starting_point_months)}</span>`);
+        if (s.final_sentence_months != null) sentFacts.push(`<span class="sent-fact"><strong>Sentence:</strong> ${_fmtMonths(s.final_sentence_months)}</span>`);
+        if (s.home_detention_months != null) sentFacts.push(`<span class="sent-fact"><strong>Home det.:</strong> ${_fmtMonths(s.home_detention_months)}</span>`);
+        if (s.community_work_hours != null)  sentFacts.push(`<span class="sent-fact"><strong>Comm. work:</strong> ${s.community_work_hours}h</span>`);
+        if (s.guilty_plea_discount_pct != null) sentFacts.push(`<span class="sent-fact"><strong>GP discount:</strong> ${s.guilty_plea_discount_pct}%</span>`);
+        if (s.reparation_amount != null) sentFacts.push(`<span class="sent-fact"><strong>Reparation:</strong> $${s.reparation_amount.toLocaleString()}</span>`);
+        if (s.fine_amount != null) sentFacts.push(`<span class="sent-fact"><strong>Fine:</strong> $${s.fine_amount.toLocaleString()}</span>`);
+
+        const pillsHtml = (c.flags || []).length
+          ? `<div class="flag-pills" style="margin-top:6px">${c.flags.map(f => `<span class="flag-pill">${FLAG_LABELS[f] || f}</span>`).join('')}</div>`
+          : '';
+
+        const gpBadge = s.has_guilty_plea ? '<span class="badge-gp">Guilty plea</span>' : '';
+        const prevBadge = s.has_previous_convictions ? '<span class="flag-pill">Prior convictions</span>' : '';
+
+        cardsHtml += `
+          <div class="sent-card">
+            <div class="sent-card-header">
+              <div class="notable-card-title">
+                <a href="${c.url || '#'}" target="_blank">${c.title || c.case_id}</a>
+                <div class="notable-card-meta">${c.court_name} &bull; ${c.date || 'n/d'}</div>
+              </div>
+              ${_sentBadge(s)}
+            </div>
+            <div class="sent-facts">${sentFacts.join('')}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">${gpBadge}${prevBadge}</div>
+            ${pillsHtml}
+          </div>`;
+      }
+
+      el.innerHTML = statsHtml + cardsHtml;
+    } catch (e) {
+      el.innerHTML = '<div class="notable-empty">Could not reach the server. Is the API running?</div>';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Search Sentencing Tracker';
     }
+  }
+
+  function clearSentencing() {
+    document.querySelectorAll('.sent-flag-cb').forEach(cb => cb.checked = false);
+    ['sent_type','sent_gp','sent_court'].forEach(id => document.getElementById(id).value = '');
+    ['sent_min_sp','sent_max_sp','sent_min_fs','sent_max_fs','sent_year_from','sent_year_to']
+      .forEach(id => document.getElementById(id).value = '');
+    document.getElementById('sentencing-results').innerHTML =
+      '<div class="notable-empty">Select filters above then click Search.</div>';
+  }
+
+  // ---- PG Tracker ----
+
+  const _PG_TYPE_LABELS = {
+    unjustified_dismissal:  'Unjustified dismissal',
+    constructive_dismissal: 'Constructive dismissal',
+    disadvantage:           'Disadvantage / good faith',
+    harassment:             'Harassment',
+    discrimination:         'Discrimination',
+    unjustified_action:     'Unjustified action',
+  };
+
+  async function searchPG() {
+    const btn = document.getElementById('pg-search-btn');
+    btn.disabled = true; btn.textContent = 'Searching...';
+    const el = document.getElementById('pg-results');
+    el.innerHTML = '<div class="loading-dots">Searching...</div>';
+
+    const grievanceTypes = Array.from(document.querySelectorAll('.pg-type-cb:checked')).map(c => c.value);
+    const reinSel    = document.getElementById('pg_reinstatement').value;
+    const minContrib = document.getElementById('pg_min_contrib').value;
+    const maxContrib = document.getElementById('pg_max_contrib').value;
+    const minComp    = document.getElementById('pg_min_comp').value;
+    const maxComp    = document.getElementById('pg_max_comp').value;
+    const court      = document.getElementById('pg_court').value;
+    const yearFrom   = document.getElementById('pg_year_from').value;
+    const yearTo     = document.getElementById('pg_year_to').value;
+
+    const body = { limit: 50 };
+    if (grievanceTypes.length) body.grievance_types = grievanceTypes;
+    if (reinSel === 'yes')     body.reinstatement = true;
+    if (reinSel === 'no')      body.reinstatement = false;
+    if (minContrib)            body.min_contributory = parseFloat(minContrib);
+    if (maxContrib)            body.max_contributory = parseFloat(maxContrib);
+    if (minComp)               body.min_compensation = parseFloat(minComp);
+    if (maxComp)               body.max_compensation = parseFloat(maxComp);
+    if (court)                 body.courts = [court];
+    if (yearFrom)              body.year_from = parseInt(yearFrom);
+    if (yearTo)                body.year_to   = parseInt(yearTo);
+
+    try {
+      const res  = await fetch('/pg-tracker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        el.innerHTML = `<div class="notable-empty">Error: ${data.detail || 'Something went wrong.'}</div>`;
+        return;
+      }
+      if (!data.length) {
+        el.innerHTML = '<div class="notable-empty">No cases match these filters. Try broader criteria.</div>';
+        return;
+      }
+
+      // Stats
+      const comps   = data.map(c => (c.penalty || {}).awarded_amount).filter(v => v != null);
+      const contribs = data.map(c => (c.pg || {}).contributory_conduct_pct).filter(v => v != null);
+      const nReinst  = data.filter(c => (c.pg || {}).reinstatement_ordered === true).length;
+
+      let statsHtml = `<div class="stats-box">
+        <div class="stat-item"><span class="stat-label">Cases</span><span class="stat-value">${data.length}</span></div>
+        <div class="stat-item"><span class="stat-label">Reinstatement ordered</span><span class="stat-value">${nReinst} / ${data.length}</span></div>`;
+      if (comps.length) statsHtml += `<div class="stat-item"><span class="stat-label">Median compensation</span><span class="stat-value">$${_median(comps).toLocaleString(undefined,{maximumFractionDigits:0})}</span></div>`;
+      if (contribs.length) statsHtml += `<div class="stat-item"><span class="stat-label">Median contrib. conduct</span><span class="stat-value">${_median(contribs).toFixed(0)}%</span></div>`;
+      statsHtml += '</div>';
+
+      let cardsHtml = `<div class="notable-count">${data.length} case${data.length !== 1 ? 's' : ''} found</div>`;
+      for (const c of data) {
+        const pg = c.pg || {};
+        const penalty = c.penalty || {};
+
+        const typePills = (pg.grievance_types || [])
+          .map(t => `<span class="pg-type-pill">${_PG_TYPE_LABELS[t] || t.replace(/_/g,' ')}</span>`)
+          .join('');
+
+        const reinBadge = pg.reinstatement_ordered === true
+          ? '<span class="badge-reinstate">Reinstatement ordered</span>'
+          : pg.reinstatement_ordered === false
+          ? '<span class="badge-no-reinstate">Reinstatement declined</span>'
+          : '';
+
+        const facts = [];
+        if (penalty.awarded_amount != null)      facts.push(`<span class="sent-fact"><strong>Compensation:</strong> $${penalty.awarded_amount.toLocaleString()}</span>`);
+        if (pg.contributory_conduct_pct != null) facts.push(`<span class="sent-fact"><strong>Contributory conduct:</strong> ${pg.contributory_conduct_pct}% reduction</span>`);
+        else if (pg.has_contributory_conduct)    facts.push(`<span class="sent-fact"><em>Contributory conduct discussed</em></span>`);
+
+        cardsHtml += `
+          <div class="pg-card">
+            <div class="pg-card-header">
+              <div class="notable-card-title">
+                <a href="${c.url || '#'}" target="_blank">${c.title || c.case_id}</a>
+                <div class="notable-card-meta">${c.court_name} &bull; ${c.date || 'n/d'}</div>
+              </div>
+              ${reinBadge}
+            </div>
+            ${typePills ? `<div class="pg-types">${typePills}</div>` : ''}
+            <div class="sent-facts">${facts.join('')}</div>
+          </div>`;
+      }
+
+      el.innerHTML = statsHtml + cardsHtml;
+    } catch (e) {
+      el.innerHTML = '<div class="notable-empty">Could not reach the server. Is the API running?</div>';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Search PG Tracker';
+    }
+  }
+
+  function clearPG() {
+    document.querySelectorAll('.pg-type-cb').forEach(cb => cb.checked = false);
+    ['pg_reinstatement','pg_court'].forEach(id => document.getElementById(id).value = '');
+    ['pg_min_contrib','pg_max_contrib','pg_min_comp','pg_max_comp','pg_year_from','pg_year_to']
+      .forEach(id => document.getElementById(id).value = '');
+    document.getElementById('pg-results').innerHTML =
+      '<div class="notable-empty">Select filters above then click Search.</div>';
   }
 
   // ---- Flag definitions (must match ingest/flags.py FLAG_LABELS) ----

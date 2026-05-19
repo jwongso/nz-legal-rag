@@ -12,3 +12,4 @@ data/*.json
 eval/results.json
 .ruff_cache/
 .pytest_cache/
+westlaw_index.txt

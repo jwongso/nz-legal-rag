@@ -184,6 +184,118 @@ async def notable(req: NotableRequest) -> list[NotableResult]:
     ]
 
 
+class SentencingRequest(BaseModel):
+    flags: list[str] | None = None
+    courts: list[str] | None = None
+    year_from: int | None = None
+    year_to: int | None = None
+    sentence_type: str | None = None
+    min_starting_point: float | None = None
+    max_starting_point: float | None = None
+    min_final_sentence: float | None = None
+    max_final_sentence: float | None = None
+    has_guilty_plea: bool | None = None
+    limit: int = 30
+
+
+class SentencingResult(BaseModel):
+    case_id: str
+    title: str
+    court_name: str
+    date: str
+    url: str
+    flags: list[str]
+    sentencing: dict
+    penalty: dict
+    counsel: dict
+
+
+@app.post("/sentencing-tracker", response_model=list[SentencingResult])
+async def sentencing_tracker(req: SentencingRequest) -> list[SentencingResult]:
+    """Criminal sentencing tracker. Returns cases with extracted sentencing factors."""
+    hits = _pipeline.search_sentencing(
+        flags=req.flags or None,
+        courts=req.courts or None,
+        year_from=req.year_from,
+        year_to=req.year_to,
+        sentence_type=req.sentence_type or None,
+        min_starting_point=req.min_starting_point,
+        max_starting_point=req.max_starting_point,
+        min_final_sentence=req.min_final_sentence,
+        max_final_sentence=req.max_final_sentence,
+        has_guilty_plea=req.has_guilty_plea,
+        limit=min(req.limit, 100),
+    )
+    return [
+        SentencingResult(
+            case_id=h.case_id,
+            title=h.title,
+            court_name=h.court_name,
+            date=h.date,
+            url=h.url,
+            flags=h.payload.get("flags") or [],
+            sentencing=h.payload.get("sentencing") or {},
+            penalty=h.payload.get("penalty") or {},
+            counsel=h.payload.get("counsel") or {},
+        )
+        for h in hits
+    ]
+
+
+class PGRequest(BaseModel):
+    grievance_types: list[str] | None = None
+    reinstatement: bool | None = None
+    min_contributory: float | None = None
+    max_contributory: float | None = None
+    min_compensation: float | None = None
+    max_compensation: float | None = None
+    courts: list[str] | None = None
+    year_from: int | None = None
+    year_to: int | None = None
+    limit: int = 30
+
+
+class PGResult(BaseModel):
+    case_id: str
+    title: str
+    court_name: str
+    date: str
+    url: str
+    pg: dict
+    penalty: dict
+    counsel: dict
+
+
+@app.post("/pg-tracker", response_model=list[PGResult])
+async def pg_tracker(req: PGRequest) -> list[PGResult]:
+    """Personal grievance tracker. Returns ERA/NZEmpC cases with outcome data."""
+    hits = _pipeline.search_pg(
+        grievance_types=req.grievance_types or None,
+        reinstatement=req.reinstatement,
+        min_contributory=req.min_contributory,
+        max_contributory=req.max_contributory,
+        min_compensation=req.min_compensation,
+        max_compensation=req.max_compensation,
+        courts=req.courts or None,
+        year_from=req.year_from,
+        year_to=req.year_to,
+        limit=min(req.limit, 100),
+    )
+    return [
+        PGResult(
+            case_id=h.case_id,
+            title=h.title,
+            court_name=h.court_name,
+            date=h.date,
+            url=h.url,
+            pg=h.payload.get("pg") or {},
+            penalty=h.payload.get("penalty") or {},
+            counsel=h.payload.get("counsel") or {},
+        )
+        for h in hits
+    ]
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=True)

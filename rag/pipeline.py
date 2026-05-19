@@ -148,6 +148,60 @@ class RAGPipeline:
             limit=limit,
         )
 
+    def search_sentencing(
+        self,
+        flags: list[str] | None = None,
+        courts: list[str] | None = None,
+        year_from: int | None = None,
+        year_to: int | None = None,
+        sentence_type: str | None = None,
+        min_starting_point: float | None = None,
+        max_starting_point: float | None = None,
+        min_final_sentence: float | None = None,
+        max_final_sentence: float | None = None,
+        has_guilty_plea: bool | None = None,
+        limit: int = 50,
+    ) -> list[SearchResult]:
+        return self._store.scroll_sentencing(
+            flags=flags,
+            courts=courts,
+            year_from=year_from,
+            year_to=year_to,
+            sentence_type=sentence_type,
+            min_starting_point=min_starting_point,
+            max_starting_point=max_starting_point,
+            min_final_sentence=min_final_sentence,
+            max_final_sentence=max_final_sentence,
+            has_guilty_plea=has_guilty_plea,
+            limit=limit,
+        )
+
+    def search_pg(
+        self,
+        grievance_types: list[str] | None = None,
+        reinstatement: bool | None = None,
+        min_contributory: float | None = None,
+        max_contributory: float | None = None,
+        min_compensation: float | None = None,
+        max_compensation: float | None = None,
+        courts: list[str] | None = None,
+        year_from: int | None = None,
+        year_to: int | None = None,
+        limit: int = 50,
+    ) -> list[SearchResult]:
+        return self._store.scroll_pg(
+            grievance_types=grievance_types,
+            reinstatement=reinstatement,
+            min_contributory=min_contributory,
+            max_contributory=max_contributory,
+            min_compensation=min_compensation,
+            max_compensation=max_compensation,
+            courts=courts,
+            year_from=year_from,
+            year_to=year_to,
+            limit=limit,
+        )
+
     async def close(self) -> None:
         await self._embedder.close()
         await self._generator.close()
