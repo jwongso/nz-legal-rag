@@ -61,9 +61,23 @@ def _months_to_osi(months: int) -> float:
     return 0.88
 
 
-_LIFE_NO_PAROLE = re.compile(r"life\s+imprisonment\s+without\s+parole", re.IGNORECASE)
-_LIFE           = re.compile(r"\blife\s+imprisonment\b", re.IGNORECASE)
-_PREV_DET       = re.compile(r"\bpreventive\s+detention\b", re.IGNORECASE)
+# These patterns require a sentencing verb before the outcome to avoid matching
+# mentions of the concept in discussion (e.g. "maximum penalty is life imprisonment").
+_LIFE_NO_PAROLE = re.compile(
+    r"(?:sentenced?\s+to|sentence\s+of|ordered\s+to\s+serve)\s+"
+    r"life\s+imprisonment\s+without\s+(?:the\s+possibility\s+of\s+)?parole",
+    re.IGNORECASE,
+)
+_LIFE = re.compile(
+    r"(?:sentenced?\s+to|sentence\s+of|term\s+of\s+imprisonment\s+of|imprisoned\s+for)\s+life\b"
+    r"|life\s+imprisonment\s+(?:is\s+)?(?:imposed|confirmed|upheld|substituted)",
+    re.IGNORECASE,
+)
+_PREV_DET = re.compile(
+    r"(?:sentenced?\s+to|sentence\s+of|order\s+of)\s+preventive\s+detention"
+    r"|\bpreventive\s+detention\s+(?:is\s+)?(?:imposed|confirmed|upheld|ordered)",
+    re.IGNORECASE,
+)
 _HOME_DET       = re.compile(r"home\s+detention\s+(?:for\s+)?(\d+)\s*(months?|years?)", re.IGNORECASE)
 _COMMUNITY_WORK = re.compile(r"(\d+)\s*hours?\s*(?:of\s+)?community\s+work", re.IGNORECASE)
 _SUPERVISION    = re.compile(r"\bintensive\s+supervision\b|\bsupervision\s+(?:order|for)\b", re.IGNORECASE)
@@ -248,16 +262,29 @@ def _extract_criminal(text: str) -> dict | None:
 _DOLLAR = re.compile(r"\$\s*([\d,]+(?:\.\d{2})?)", re.IGNORECASE)
 
 _AWARD_PATTERNS = [
+    # Explicit award / order to pay
     re.compile(r"(?:I\s+award|awarded?|ordered?\s+to\s+pay|entitled\s+to|"
                r"I\s+order.{0,20}pay)\s+\$\s*([\d,]+)", re.IGNORECASE),
-    re.compile(r"(?:compensation|damages?|refund)\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
-    re.compile(r"\$\s*([\d,]+)\s+(?:is|are)\s+awarded", re.IGNORECASE),
+    re.compile(r"(?:compensation|damages?|refund|reimbursement)\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
+    re.compile(r"\$\s*([\d,]+)\s+(?:is|are|shall\s+be|to\s+be)\s+(?:awarded|paid|refunded|reimbursed)", re.IGNORECASE),
+    # NZ Tenancy Tribunal / ERA common forms
+    re.compile(r"order\s+(?:that\s+)?(?:the\s+)?(?:landlord|tenant|respondent|applicant|employer|employee)"
+               r".{0,30}pay\s+(?:the\s+sum\s+of\s+)?\$\s*([\d,]+)", re.IGNORECASE),
+    re.compile(r"pay\s+(?:the\s+(?:applicant|claimant|plaintiff|tenant|landlord)\s+)?"
+               r"(?:the\s+sum\s+of\s+)?\$\s*([\d,]+)", re.IGNORECASE),
+    re.compile(r"(?:exemplary|punitive|aggravated)\s+damages?\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
 ]
 _CLAIM_PATTERNS = [
     re.compile(r"(?:claims?\s+(?:the\s+sum\s+of\s+)?\$|"
                r"seeks?\s+\$|seeking\s+\$|claimed\s+\$)\s*([\d,]+)", re.IGNORECASE),
     re.compile(r"amount\s+claimed\D{0,10}\$\s*([\d,]+)", re.IGNORECASE),
     re.compile(r"application\s+(?:is\s+)?for\s+\$\s*([\d,]+)", re.IGNORECASE),
+    # Additional NZ-common phrasings
+    re.compile(r"(?:applicant|claimant|plaintiff|tenant)\s+(?:is\s+)?claim(?:s|ing)\s+"
+               r"(?:the\s+sum\s+of\s+)?\$\s*([\d,]+)", re.IGNORECASE),
+    re.compile(r"\$\s*([\d,]+)\s+(?:is\s+)?(?:claimed|sought|requested)", re.IGNORECASE),
+    re.compile(r"total\s+(?:claim|sum|amount)\s+of\s+\$\s*([\d,]+)", re.IGNORECASE),
+    re.compile(r"(?:has|have)\s+claimed\s+\$\s*([\d,]+)", re.IGNORECASE),
 ]
 
 _REINSTATEMENT = re.compile(r"\breinstate(?:ment|d)?\b", re.IGNORECASE)
