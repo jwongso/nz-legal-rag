@@ -160,6 +160,8 @@ class VectorStore:
         max_recovery_rate: float | None = None,
         min_awarded: float | None = None,
         max_awarded: float | None = None,
+        counsel_surname: str | None = None,
+        crown_counsel: str | None = None,
         courts: list[str] | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
@@ -211,6 +213,18 @@ class VectorStore:
         if flags:
             for f in flags:
                 should.append(FieldCondition(key="flags", match=MatchValue(value=f)))
+
+        # Counsel filters - exact match on indexed keyword arrays
+        if counsel_surname:
+            must.append(FieldCondition(
+                key="counsel.all_surnames",
+                match=MatchValue(value=counsel_surname),
+            ))
+        if crown_counsel:
+            must.append(FieldCondition(
+                key="counsel.crown",
+                match=MatchValue(value=crown_counsel),
+            ))
 
         query_filter = (
             Filter(must=must or None, should=should or None)

@@ -612,6 +612,26 @@
       </div>
     </div>
 
+    <div class="filter-card">
+      <h3>Counsel</h3>
+      <div class="notable-filter-row" style="flex-wrap:wrap;gap:16px;">
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <label style="font-size:0.8rem;color:#4a5568;font-weight:500;">Any counsel (surname)</label>
+          <input type="text" id="counsel_surname" placeholder="e.g. Armstrong"
+                 style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.83rem;font-family:inherit;width:200px;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <label style="font-size:0.8rem;color:#4a5568;font-weight:500;">Crown / prosecution counsel (full name as listed)</label>
+          <input type="text" id="crown_counsel" placeholder="e.g. M Harborow"
+                 style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.83rem;font-family:inherit;width:240px;">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn-search" onclick="searchNotable()">Search</button>
+        <button class="btn-clear" onclick="clearNotable()">Clear</button>
+      </div>
+    </div>
+
     <div id="notable-results">
       <div class="notable-empty">Select one or more filters above then click Search.</div>
     </div>
@@ -731,21 +751,25 @@
     const maxAwarded  = document.getElementById('max_awarded').value;
     const minRecovery = document.getElementById('min_recovery').value;
     const maxRecovery = document.getElementById('max_recovery').value;
-    const court       = document.getElementById('notable_court').value;
-    const yearFrom    = document.getElementById('notable_year_from').value;
-    const yearTo      = document.getElementById('notable_year_to').value;
+    const court          = document.getElementById('notable_court').value;
+    const yearFrom       = document.getElementById('notable_year_from').value;
+    const yearTo         = document.getElementById('notable_year_to').value;
+    const counselSurname = document.getElementById('counsel_surname').value.trim();
+    const crownCounsel   = document.getElementById('crown_counsel').value.trim();
 
     const body = { limit: 50 };
-    if (flags.length)     body.flags       = flags;
+    if (flags.length)     body.flags           = flags;
     if (minOsi)           body.min_osi     = parseFloat(minOsi);
     if (maxOsi)           body.max_osi     = parseFloat(maxOsi);
     if (minAwarded)       body.min_awarded  = parseFloat(minAwarded);
     if (maxAwarded)       body.max_awarded  = parseFloat(maxAwarded);
     if (minRecovery)      body.min_recovery = parseFloat(minRecovery);
     if (maxRecovery)      body.max_recovery = parseFloat(maxRecovery);
-    if (court)            body.courts      = [court];
-    if (yearFrom)         body.year_from   = parseInt(yearFrom);
-    if (yearTo)           body.year_to     = parseInt(yearTo);
+    if (court)            body.courts          = [court];
+    if (yearFrom)         body.year_from       = parseInt(yearFrom);
+    if (yearTo)           body.year_to         = parseInt(yearTo);
+    if (counselSurname)   body.counsel_surname = counselSurname;
+    if (crownCounsel)     body.crown_counsel   = crownCounsel;
 
     try {
       const res  = await fetch('/notable', {
@@ -785,6 +809,17 @@
           ? `<div class="flag-pills">${c.flags.map(f => `<span class="flag-pill">${FLAG_LABELS[f] || f}</span>`).join('')}</div>`
           : '';
 
+        // Counsel line
+        let counselHtml = '';
+        const cc = c.counsel || {};
+        if (cc.has_data && cc.entries && cc.entries.length) {
+          const parts = cc.entries
+            .filter(e => e.role !== 'child')
+            .map(e => `${e.names.join(', ')} <em>(${e.role.replace(/_/g,' ')})</em>`)
+            .join(' &nbsp;|&nbsp; ');
+          if (parts) counselHtml = `<div class="penalty-line" style="margin-top:5px;">Counsel: ${parts}</div>`;
+        }
+
         html += `
           <div class="notable-card ${borderCls}">
             <div class="notable-card-header">
@@ -795,6 +830,7 @@
               ${badgeText ? `<span class="osi-badge ${badgeCls}">${badgeText}</span>` : ''}
             </div>
             ${gapHtml}
+            ${counselHtml}
             ${pillsHtml}
           </div>`;
       }
@@ -809,7 +845,8 @@
 
   function clearNotable() {
     document.querySelectorAll('#flag-checkboxes input').forEach(cb => cb.checked = false);
-    ['min_osi','max_osi','min_awarded','max_awarded','min_recovery','max_recovery','notable_year_from','notable_year_to'].forEach(id => {
+    ['min_osi','max_osi','min_awarded','max_awarded','min_recovery','max_recovery',
+     'notable_year_from','notable_year_to','counsel_surname','crown_counsel'].forEach(id => {
       document.getElementById(id).value = '';
     });
     document.getElementById('notable_court').value = '';

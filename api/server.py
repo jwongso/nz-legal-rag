@@ -132,6 +132,8 @@ class NotableRequest(BaseModel):
     max_recovery: float | None = None
     min_awarded: float | None = None
     max_awarded: float | None = None
+    counsel_surname: str | None = None
+    crown_counsel: str | None = None
     courts: list[str] | None = None
     year_from: int | None = None
     year_to: int | None = None
@@ -146,6 +148,7 @@ class NotableResult(BaseModel):
     url: str
     flags: list[str]
     penalty: dict
+    counsel: dict
 
 
 @app.post("/notable", response_model=list[NotableResult])
@@ -159,6 +162,8 @@ async def notable(req: NotableRequest) -> list[NotableResult]:
         max_recovery_rate=req.max_recovery,
         min_awarded=req.min_awarded,
         max_awarded=req.max_awarded,
+        counsel_surname=req.counsel_surname or None,
+        crown_counsel=req.crown_counsel or None,
         courts=req.courts or None,
         year_from=req.year_from,
         year_to=req.year_to,
@@ -173,6 +178,7 @@ async def notable(req: NotableRequest) -> list[NotableResult]:
             url=h.url,
             flags=h.payload.get("flags") or [],
             penalty=h.payload.get("penalty") or {},
+            counsel=h.payload.get("counsel") or {},
         )
         for h in hits
     ]
