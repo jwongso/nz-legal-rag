@@ -35,26 +35,33 @@ leaves the machine.
     |   MCP Server      |               |   REST API (FastAPI)  |
     |  search_nz_law()  |               |   POST /ask          |
     |  get_case()       |               |   GET  /search       |
-    +--------+----------+               +-----------+----------+
-             |                                      |
-             +------------------+-------------------+
-                                |
-                    +-----------v-----------+
-                    |    RAG Pipeline       |
-                    |  1. embed query       |
-                    |  2. retrieve top-k   |
-                    |  3. deduplicate      |
-                    |  4. rerank           |
-                    |  5. generate answer  |
-                    +-----------+-----------+
-                                |
-          +---------------------+---------------------+
-          |                                           |
-+---------v----------+                    +-----------v----------+
-|  Qdrant            |                    |  llama.cpp server    |
-|  Vector DB         |                    |  (local inference)   |
-|  :6333             |                    |  :8080               |
-+--------------------+                    +----------------------+
+    +--------+----------+               |   POST /notable      |
+             |                          |   POST /sentencing-  |
+             |                          |         tracker      |
+             |                          |   POST /pg-tracker   |
+             +------------------+       +-----------+----------+
+                                |                   |
+                    +-----------v-------------------v-----------+
+                    |    RAG Pipeline (rag/pipeline.py)         |
+                    |  1. embed query                           |
+                    |  2. SQL pre-filter (FilterParams) [opt]  |
+                    |  3. Qdrant semantic search               |
+                    |  4. deduplicate (one chunk per case)     |
+                    |  5. cross-encoder rerank [opt]           |
+                    |  6. generate answer via LLM             |
+                    |  7. verify citations (no LLM call)      |
+                    +-----------+-----------+-----------+-------+
+                                |           |           |
+          +---------------------+     +-----v------+   |
+          |                           |  PostgreSQL |   |
++---------v----------+               |  nz_legal   |   +----------------------+
+|  Qdrant            |               |  documents  |   |  llama.cpp server    |
+|  Vector DB         |               |  chunks     |   |  (local inference)   |
+|  :6333             |               |  sentencing |   |  :8080               |
+|  Chunks + metadata |               |  pg_cases   |   +----------------------+
+|  (payload filters) |               |  citations  |
++--------------------+               |  :5432      |
+                                     +-------------+
 
   Embeddings (nomic-embed-text-v1.5) and reranker (bge-reranker-v2-m3)
   run in-process via sentence-transformers on CPU. No Ollama required.
@@ -64,7 +71,7 @@ Data ingestion:
 
   NZLII (nzlii.org) - public legal information repository
      |
-     +-- HTML decisions: NZHC, NZERA
+     +-- HTML decisions: NZHC, NZCA, NZERA, NZEmpC, NZSC
      +-- PDF decisions:  NZTT (Tenancy Tribunal, PDF-only on NZLII)
      |
     +---------v---------+
@@ -79,8 +86,8 @@ Data ingestion:
     +--------+----------+
              |
     +--------v----------+
-    |  pipeline.py      |
-    |  embed + upsert   |
+    |  pipeline.py      |   --> Qdrant (vectors + metadata)
+    |  embed + upsert   |   --> PostgreSQL via migrate_from_qdrant.py
     +-------------------+
 ```
 
@@ -95,8 +102,8 @@ Data ingestion:
 NZLII hosts HTML decisions for most courts. Tenancy Tribunal (NZTT) decisions
 are PDF-only on NZLII - the scraper fetches and extracts these via pypdf.
 
-Current coverage: **2022-2024**, 100 decisions per court per year (~75k chunks across 6 courts).
-All sources are publicly available. No proprietary data is required.
+Current coverage: **2020-2026** across all courts (NZCA fully indexed from 2020).
+182,000+ chunks indexed. All sources are publicly available. No proprietary data required.
 
 ---
 
@@ -117,8 +124,15 @@ No data leaves the machine - the tunnel only carries HTTP traffic to the UI.
 docker compose up -d
 ```
 
-This starts Qdrant (port 6333). Ollama is no longer required - embeddings run
-in-process via sentence-transformers.
+Starts Qdrant (port 6333). Ollama is not required - embeddings run in-process
+via sentence-transformers.
+
+PostgreSQL must be running locally. Create the database:
+
+```bash
+createdb nz_legal
+psql nz_legal -f db/schema.sql
+```
 
 ### 2. Install dependencies
 
@@ -127,7 +141,7 @@ pip install -e ".[dev]"
 pip install einops  # required by nomic-embed-text-v1.5
 ```
 
-### 3. Start your llama.cpp inference server
+### 3. Start the LLM inference server
 
 ```bash
 llama-server --model /path/to/model.gguf --n-gpu-layers 20 --port 8080
@@ -138,20 +152,41 @@ Any OpenAI-compatible endpoint works (Ollama, vLLM, LM Studio).
 ### 4. Ingest NZ legal data
 
 ```bash
-# Ingest Tenancy Tribunal decisions (PDF extraction handled automatically)
-python -m ingest.pipeline --court NZTT --years 2022 2023 2024 --threads 16
+# Ingest NZCA decisions (2020-2026)
+python -m ingest.pipeline --court NZCA --years 2020 2021 2022 2023 2024 2025 2026 --threads 16
 
 # Ingest High Court decisions
 python -m ingest.pipeline --court NZHC --years 2022 2023 2024 --threads 16
 
 # Ingest Employment Relations Authority decisions
 python -m ingest.pipeline --court NZERA --years 2022 2023 2024 --threads 16
+
+# Ingest Tenancy Tribunal (PDF extraction handled automatically)
+python -m ingest.pipeline --court NZTT --years 2022 2023 2024 --threads 16
 ```
 
-`--threads` caps CPU usage from sentence-transformers embedding (default: 16).
+`--threads` caps CPU usage from sentence-transformers (default: 16).
 `--max-per-year` limits decisions per year (default: 200).
 
-### 5. Ask a question
+### 5. Populate PostgreSQL
+
+After Qdrant is populated, migrate metadata to PostgreSQL for structured filtering:
+
+```bash
+python -m db.migrate_from_qdrant
+```
+
+Then run the structured data backfill pipelines:
+
+```bash
+python -u -m ingest.sentencing_pipeline  # criminal sentencing factors
+python -u -m ingest.pg_pipeline          # employment personal grievance outcomes
+python -u -m ingest.counsel_pipeline     # counsel/appearances extraction
+python -u -m ingest.flag_pipeline        # legal category flags
+python -u -m ingest.recovery_agg         # civil recovery rate aggregation
+```
+
+### 6. Ask a question
 
 ```bash
 # REST API
@@ -187,6 +222,294 @@ Sources:
   [2] Hooper v Zhang [2023] NZTT Wellington 4521/23
   [3] Chen v Patel [2022] NZTT Auckland 3187/22
 ```
+
+---
+
+## Retrieval strategies
+
+Three retrieval strategies are supported, selectable per-request:
+
+### 1. Pure Qdrant (default)
+
+Semantic search over the full corpus with optional Qdrant payload filters (court,
+year, flags). Best for open-ended questions with no structured constraints.
+
+```python
+pipeline.ask("What is unjustified dismissal?", courts=["NZERA"])
+```
+
+### 2. SQL-first hybrid
+
+PostgreSQL pre-filter narrows candidates to a structured subset, then Qdrant ranks
+semantically within that set via `HasIdCondition`. Accurate when you need to combine
+structured constraints (sentencing range, offence type, employment outcome) with
+a semantic question.
+
+```python
+from db.filter import FilterParams
+params = FilterParams(courts=["NZHC"], min_final_sentence=24, max_final_sentence=60)
+pipeline.ask("robbery aggravated factors", sql_filter=params)
+```
+
+The pre-filter is capped at 5,000 point IDs to keep Qdrant latency bounded.
+
+### 3. BM25 keyword search
+
+Full-text search via PostgreSQL `tsvector`/GIN index. Useful for exact phrase lookup
+or when semantic search returns too many thematically similar but textually different
+results.
+
+```python
+from db.filter import bm25_search
+results = bm25_search("unjustified dismissal reinstatement", courts=["NZERA"], limit=10)
+```
+
+---
+
+## Developer trace and citation verification
+
+Enable the retrieval trace by passing `"trace": true` in the `/ask` request body,
+or click the **DEV** button in the web UI.
+
+```json
+POST /ask
+{
+  "question": "What is unjustified dismissal?",
+  "top_k": 5,
+  "trace": true
+}
+```
+
+Response includes a `trace` object:
+
+```json
+{
+  "answer": "...",
+  "trace": {
+    "strategy": "pure_qdrant",
+    "sql_point_ids_count": 0,
+    "counts": {
+      "qdrant_candidates": 30,
+      "after_dedup": 15,
+      "after_rerank": 5
+    },
+    "latency_ms": {
+      "embed": 42.1,
+      "sql": 0.0,
+      "qdrant": 87.3,
+      "rerank": 0.0,
+      "generate": 31204.8,
+      "total": 31334.2
+    },
+    "top_scores": [0.8821, 0.8754, 0.8612, 0.8489, 0.8311],
+    "models": {
+      "llm": "qwen3:latest",
+      "embedding": "nomic-embed-text-v1.5",
+      "reranker_enabled": false
+    }
+  },
+  "citation_verification": {
+    "has_citations": true,
+    "cited_count": 4,
+    "orphan_citations": [],
+    "uncited_sources": [5],
+    "evidence_confidence": "high",
+    "has_warning": false
+  }
+}
+```
+
+Citation verification is lightweight - no extra LLM call. It checks whether
+the generated answer contains `[N]` references matching the retrieved sources,
+flags orphan citations (cited but not retrieved), and assigns a confidence level:
+
+- **high**: 5+ sources, all cited, no orphans
+- **medium**: 3+ sources, all cited, no orphans
+- **low**: no citations, or orphan citations present
+
+---
+
+## Tracker endpoints (Westlaw-comparable)
+
+These structured-data endpoints compete directly with Westlaw NZ's premium tracker products,
+delivered on-premise with no per-user SaaS fee.
+
+| This project | Westlaw NZ equivalent |
+|---|---|
+| `POST /sentencing-tracker` | Sentencing Tracker |
+| `POST /pg-tracker` | Personal Grievance Tracker |
+| `POST /notable` (OSI + flags) | OSH Tracker / Resource Management Tracker |
+| `POST /contrasting-cases` | (no direct equivalent - contrastive retrieval) |
+
+### Sentencing Tracker (`POST /sentencing-tracker`)
+
+Extracts structured criminal sentencing factors from NZHC, NZCA and NZSC decisions.
+
+Payload fields extracted per chunk (stored under `sentencing.*` in Qdrant and
+`sentencing_cases` in PostgreSQL):
+
+| Field | Type | Description |
+|---|---|---|
+| `starting_point_months` | float | Judicial starting point before discounts |
+| `final_sentence_months` | float | Imprisonment term actually imposed |
+| `home_detention_months` | float | Home detention term |
+| `community_work_hours` | int | Community work hours ordered |
+| `reparation_amount` | float | Reparation ordered ($) |
+| `fine_amount` | float | Fine imposed ($) |
+| `guilty_plea_discount_pct` | float | Discount % applied for guilty plea (5-50) |
+| `sentence_type` | keyword | imprisonment / home_detention / community_work / fine / supervision |
+| `has_guilty_plea` | bool | Guilty plea present in the text |
+| `has_remorse` | bool | Remorse expressed |
+| `has_previous_convictions` | bool | Prior convictions positively stated |
+
+Filter by: offence flags, courts, year range, sentence type, starting point range,
+final sentence range, guilty plea presence.
+
+UI: Sentencing Tracker tab computes and displays median starting point, median sentence,
+and median guilty plea discount across results.
+
+Backfill (regex): `python -u -m ingest.sentencing_pipeline`
+Backfill (LLM): `python -u -m ingest.llm_extract_pipeline --domain criminal --limit 200`
+
+### Personal Grievance Tracker (`POST /pg-tracker`)
+
+Extracts ERA / NZEmpC personal grievance outcome data.
+
+Payload fields extracted per chunk (stored under `pg.*` in Qdrant and
+`pg_cases` in PostgreSQL):
+
+| Field | Type | Description |
+|---|---|---|
+| `grievance_types` | keyword[] | unjustified_dismissal, constructive_dismissal, disadvantage, harassment, discrimination, unjustified_action |
+| `reinstatement_ordered` | bool | True = ordered, False = declined |
+| `contributory_conduct_pct` | float | Reduction % for employee's own conduct |
+| `has_contributory_conduct` | bool | Discussed but % not parsed |
+
+Filter by: grievance type, reinstatement outcome, contributory conduct range,
+compensation range (uses `penalty.awarded_amount`), court, year.
+
+UI: PG Tracker tab shows reinstatement rate, median compensation, median contributory conduct.
+
+Backfill (regex): `python -u -m ingest.pg_pipeline`
+Backfill (LLM): `python -u -m ingest.llm_extract_pipeline --domain employment`
+
+### Similar Cases With Opposite Outcomes (`POST /contrasting-cases`)
+
+Finds semantically similar cases where the court reached a different outcome. Two Qdrant
+semantic searches run in parallel - one per outcome group - each restricted to chunks
+carrying the target structured outcome field.
+
+```json
+POST /contrasting-cases
+{
+  "query": "aggravated robbery weapon group offending youth",
+  "domain": "criminal",
+  "split_by": "sentence_type",
+  "courts": ["NZHC"],
+  "top_k": 5
+}
+```
+
+Supported domains and splits:
+
+| Domain | split_by | Group A | Group B |
+|---|---|---|---|
+| `criminal` | `sentence_type` (default) | Imprisonment | Home detention |
+| `criminal` | `guilty_plea` | Guilty plea | No guilty plea |
+| `employment` | `reinstatement` (default) | Reinstatement ordered | Reinstatement declined |
+
+Each case in the response includes `structured` fields (sentencing factors or PG outcome)
+so the caller can see what drove the different result.
+
+Contrasting outcomes are drawn from public court decisions and reflect what courts decided
+in those specific cases. They do not predict what a court would decide in any other
+situation. Not legal advice.
+
+---
+
+## Counsel extraction
+
+Appearances block extracted from all decisions and stored under `counsel.*` in Qdrant.
+
+| Field | Type | Description |
+|---|---|---|
+| `has_data` | bool | Appearances block found |
+| `all_names` | keyword[] | All counsel full names |
+| `all_surnames` | keyword[] | Surnames only (for fuzzy search) |
+| `crown` | keyword[] | Crown / prosecution counsel |
+| `defence` | keyword[] | Defence / appellant counsel |
+| `entries` | list | Structured [{names, role}] entries |
+
+Searchable via the Notable Cases tab "Counsel" filter or the `/notable` endpoint.
+
+Backfill: `python -u -m ingest.counsel_pipeline`
+
+---
+
+## Flag and penalty system
+
+Every chunk carries `flags` (list of matched categories) and `penalty` (structured outcome data).
+
+### Flags (19 categories)
+
+Detected by regex in `ingest/flags.py`. Used across all tracker endpoints as an OR filter.
+
+Criminal-relevant: self_defence, provocation, diminished_responsibility, necessity, duress,
+mental_health, intoxication, youth, tikanga_maori, cultural_factors, lack_of_motive,
+suppressed_identity, jurisdictional_challenge, novel_argument, procedural_irregularity.
+
+Civil/general: exemplary_damages, contempt, whistleblower, self_represented.
+
+### Penalty fields (`penalty.*`)
+
+| Field | Description |
+|---|---|
+| `court_type` | criminal / civil_financial / civil_nonfinancial / civil_mixed / coronal / civil_disciplinary |
+| `outcome_osi` | Criminal Outcome Severity Index (0.0 discharge to 1.0 life without parole) |
+| `awarded_amount` | Civil monetary award ($) |
+| `recovery_rate` | awarded / claimed (>1.0 = exemplary damages) |
+| `recovery_class` | full_recovery / partial / exemplary |
+
+Backfill: `python -u -m ingest.flag_pipeline`
+Civil aggregation: `python -u -m ingest.recovery_agg`
+
+---
+
+## Analytics SQL
+
+Pre-written SQL queries in `db/queries/` for corpus analysis without writing raw SQL:
+
+| File | Purpose |
+|---|---|
+| `coverage.sql` | Corpus coverage per court/year, gap detection |
+| `sentencing_analysis.sql` | Median sentencing, GPD factor prevalence, year-over-year trends |
+| `employment_analysis.sql` | Compensation stats, reinstatement rates, contributory conduct |
+| `citations.sql` | Most-cited cases, citation graph traversal, unresolved citations |
+| `hybrid_search.sql` | SQL-first hybrid, BM25, and pure Qdrant query patterns |
+| `bm25_index.sql` | GIN tsvector index creation and example BM25 query |
+
+---
+
+## Test suite
+
+```bash
+pytest tests/ -v
+```
+
+145 tests across 7 files. All tests run against live Qdrant and PostgreSQL
+(no mocking). LLM-dependent tests are automatically skipped when the inference
+server is not running.
+
+| File | Tests | Coverage |
+|---|---|---|
+| `test_api.py` | 21 | All REST endpoints: health, search, ask (LLM-gated), notable, sentencing-tracker, pg-tracker |
+| `test_filter.py` | 20 | SQL pre-filter (`get_point_ids`), BM25 search, `get_document_metadata` |
+| `test_pipeline.py` | 15 | Embedder output, VectorStore search, deduplication, SQL-first hybrid roundtrip |
+| `test_quality.py` | 12 | Domain relevance (employment vs criminal courts), BM25 snippet quality, score calibration |
+| `test_trace.py` | 12 | `RetrievalTrace` serialisation, `CitationVerification` logic edge cases |
+| `test_contrasting.py` | 22 | `POST /contrasting-cases` endpoint, split configs, data quality, filter combinations |
+| `test_llm_extract.py` | 31 | JSON parsing from LLM output, field validation and clamping, text selection strategy |
+| `test_perf.py` | 13 | Latency budgets: SQL (<0.5s), BM25 (<1s), embed (<3s), Qdrant (<5s), hybrid (<8s) |
 
 ---
 
@@ -235,9 +558,13 @@ Available tools:
 | Component | Technology |
 |---|---|
 | Vector database | Qdrant |
+| Relational database | PostgreSQL (structured filters, BM25, analytics) |
 | Embeddings | nomic-embed-text-v1.5 via sentence-transformers (in-process, no server) |
 | LLM inference | llama.cpp (OpenAI-compatible) |
 | Reranker | bge-reranker-v2-m3 via sentence-transformers (CPU, ~50ms per query) |
+| SQL pre-filter | `db/filter.py` - FilterParams + `HasIdCondition` for SQL-first hybrid |
+| BM25 search | PostgreSQL `tsvector` / GIN index |
+| Retrieval trace | `rag/trace.py` - per-stage latency + citation verification |
 | MCP server | Python MCP SDK |
 | REST API | FastAPI |
 | Evaluation | RAGAS |
@@ -250,163 +577,71 @@ Available tools:
 This project runs on a single machine with a consumer GPU. No Blackwell required.
 
 Current inference: llama-server with Qwen3.6-35B-A3B-UD-Q5_K_M (Unsloth Dynamic 5-bit,
-MTP-capable). 10 GPU layers, 4096 context. MTP disabled due to 8GB VRAM headroom.
+MTP-capable). 10 GPU layers, 4096 context.
 
 Embeddings: nomic-embed-text-v1.5 via sentence-transformers, running in-process on CPU.
 No Ollama server required. Thread count is capped at 16 during ingest to leave headroom
-for the inference server. Not a bottleneck at the scales NZ legal corpus requires
+for the inference server. Not a bottleneck at the scales the NZ legal corpus requires
 (NZLII has ~50k decisions total).
 
----
-
-## Tracker endpoints (Westlaw-comparable)
-
-These structured-data endpoints compete directly with Westlaw NZ's premium tracker products,
-delivered on-premise with no per-user SaaS fee.
-
-| This project | Westlaw NZ equivalent |
-|---|---|
-| `POST /sentencing-tracker` | Sentencing Tracker |
-| `POST /pg-tracker` | Personal Grievance Tracker |
-| `POST /notable` (OSI + flags) | OSH Tracker / Resource Management Tracker |
-
-### Sentencing Tracker (`POST /sentencing-tracker`)
-
-Extracts structured criminal sentencing factors from NZHC, NZCA and NZSC decisions.
-
-Payload fields extracted per chunk (stored under `sentencing.*` in Qdrant):
-
-| Field | Type | Description |
-|---|---|---|
-| `starting_point_months` | float | Judicial starting point before discounts |
-| `final_sentence_months` | float | Imprisonment term actually imposed |
-| `home_detention_months` | float | Home detention term |
-| `community_work_hours` | int | Community work hours ordered |
-| `reparation_amount` | float | Reparation ordered ($) |
-| `fine_amount` | float | Fine imposed ($) |
-| `guilty_plea_discount_pct` | float | Discount % applied for guilty plea (5-50) |
-| `sentence_type` | keyword | imprisonment / home_detention / community_work / fine / supervision |
-| `has_guilty_plea` | bool | Guilty plea present in the text |
-| `has_remorse` | bool | Remorse expressed |
-| `has_previous_convictions` | bool | Prior convictions positively stated |
-
-Filter by: offence flags, courts, year range, sentence type, starting point range,
-final sentence range, guilty plea presence.
-
-UI: Sentencing Tracker tab computes and displays median starting point, median sentence,
-and median guilty plea discount across results.
-
-Backfill: `python -m ingest.sentencing_pipeline`
-
-### Personal Grievance Tracker (`POST /pg-tracker`)
-
-Extracts ERA / NZEmpC personal grievance outcome data.
-
-Payload fields extracted per chunk (stored under `pg.*` in Qdrant):
-
-| Field | Type | Description |
-|---|---|---|
-| `grievance_types` | keyword[] | unjustified_dismissal, constructive_dismissal, disadvantage, harassment, discrimination, unjustified_action |
-| `reinstatement_ordered` | bool | True = ordered, False = declined |
-| `contributory_conduct_pct` | float | Reduction % for employee's own conduct |
-| `has_contributory_conduct` | bool | Discussed but % not parsed |
-
-Filter by: grievance type, reinstatement outcome, contributory conduct range,
-compensation range (uses `penalty.awarded_amount`), court, year.
-
-UI: PG Tracker tab shows reinstatement rate, median compensation, median contributory conduct.
-
-Backfill: `python -m ingest.pg_pipeline`
-
----
-
-## Counsel extraction
-
-Appearances block extracted from all decisions and stored under `counsel.*` in Qdrant.
-
-| Field | Type | Description |
-|---|---|---|
-| `has_data` | bool | Appearances block found |
-| `all_names` | keyword[] | All counsel full names |
-| `all_surnames` | keyword[] | Surnames only (for fuzzy search) |
-| `crown` | keyword[] | Crown / prosecution counsel |
-| `defence` | keyword[] | Defence / appellant counsel |
-| `entries` | list | Structured [{names, role}] entries |
-
-Searchable via the Notable Cases tab "Counsel" filter or the `/notable` endpoint.
-
-Backfill: `python -m ingest.counsel_pipeline`
-
----
-
-## Flag and penalty system
-
-Every chunk carries `flags` (list of matched categories) and `penalty` (structured outcome data).
-
-### Flags (19 categories)
-
-Detected by regex in `ingest/flags.py`. Used across all tracker endpoints as an OR filter.
-
-Criminal-relevant: self_defence, provocation, diminished_responsibility, necessity, duress,
-mental_health, intoxication, youth, tikanga_maori, cultural_factors, lack_of_motive,
-suppressed_identity, jurisdictional_challenge, novel_argument, procedural_irregularity.
-
-Civil/general: exemplary_damages, contempt, whistleblower, self_represented.
-
-### Penalty fields (`penalty.*`)
-
-| Field | Description |
-|---|---|
-| `court_type` | criminal / civil_financial / civil_nonfinancial / civil_mixed / coronal / civil_disciplinary |
-| `outcome_osi` | Criminal Outcome Severity Index (0.0 discharge to 1.0 life without parole) |
-| `awarded_amount` | Civil monetary award ($) |
-| `recovery_rate` | awarded / claimed (>1.0 = exemplary damages) |
-| `recovery_class` | full_recovery / partial / exemplary |
-
-Backfill: `python -m ingest.flag_pipeline`
-Civil aggregation: `python -m ingest.recovery_agg`
+Upcoming: GMKtec EVO-T1 mini PC (Intel Core Ultra 9 285H, 64GB DDR5) + WD Blue SN5000
+2TB NVMe. The Arc 140T iGPU shares system RAM as VRAM, enabling larger model context
+via SYCL/oneAPI. Planned as 24/7 always-on inference node running Gentoo Linux.
 
 ---
 
 ## Roadmap
 
 ### Done
+
 - [x] NZLII decision scraper (NZSC, NZCA, NZHC, NZERA, NZEmpC, NZTT) via subprocess curl (Cloudflare bypass)
-- [x] PDF extraction for Tenancy Tribunal decisions (HTML pages are metadata wrappers)
+- [x] PDF extraction for Tenancy Tribunal decisions
 - [x] Section-aware legal document chunker (120-word windows, 20-word minimum)
 - [x] Qdrant ingestion pipeline with metadata filtering and deterministic UUID5 IDs
-- [x] 182,000+ chunks indexed across 13 courts, 2022-2024
+- [x] 182,000+ chunks indexed across 13 courts
 - [x] RAG pipeline with citation grounding
 - [x] MCP server for Claude Code / Claude Desktop
 - [x] FastAPI REST interface with web chat UI
 - [x] RAGAS evaluation harness with NZ legal Q&A benchmark
-- [x] Cross-encoder reranker (bge-reranker-v2-m3, CPU) - significant precision improvement
-- [x] Case deduplication in retrieval - one chunk per case, diverse context window
-- [x] Flag system (19 categories, regex-based, OR filter across all endpoints)
+- [x] Cross-encoder reranker (bge-reranker-v2-m3, CPU)
+- [x] Case deduplication in retrieval
+- [x] Flag system (19 categories, regex-based)
 - [x] Penalty extraction: criminal OSI scale + civil awarded amount + recovery rate
-- [x] Notable Cases endpoint (`POST /notable`) - filter by flags, OSI, compensation, counsel
+- [x] Notable Cases endpoint (`POST /notable`)
 - [x] Counsel / appearances extraction and Qdrant indexing
-- [x] Sentencing Tracker (`POST /sentencing-tracker`) - starting point, final sentence, GP discount
-- [x] Personal Grievance Tracker (`POST /pg-tracker`) - reinstatement, contributory conduct, compensation
+- [x] Sentencing Tracker (`POST /sentencing-tracker`)
+- [x] Personal Grievance Tracker (`POST /pg-tracker`)
+- [x] PostgreSQL dual-backend: structured metadata store alongside Qdrant
+- [x] SQL-first hybrid retrieval: `FilterParams` + Qdrant `HasIdCondition` (Phase 2)
+- [x] BM25 full-text search via PostgreSQL tsvector/GIN index
+- [x] Developer retrieval trace: per-stage latency breakdown (Phase 3)
+- [x] Citation verification: grounding check without extra LLM call (Phase 3)
+- [x] DEV mode in UI: collapsible trace panel per answer
+- [x] Automated test suite: 114 tests covering API, retrieval, quality, and latency
+- [x] Similar Cases With Opposite Outcomes (`POST /contrasting-cases`) - contrastive semantic retrieval split by structured outcome (Phase 4)
+- [x] LLM extraction backfill pipeline (`ingest/llm_extract_pipeline.py`) - fills structured fields the regex pipelines miss (compensation, reinstatement, aggravating/mitigating factors)
 
 ### Near-term (current hardware)
-- [ ] legislation.govt.nz statute ingestion
-- [ ] Synthetic Q&A generation from ingested corpus (Claude API, knowledge distillation)
-- [ ] Ingest progress tracking (crash-resume for long runs)
+
+- [ ] legislation.govt.nz statute ingestion (NZLEG court)
+- [ ] Synthetic Q&A generation from ingested corpus (knowledge distillation)
 - [ ] Expand eval benchmark to 50+ questions
-- [ ] Counterfactual "What if?" endpoint using extended thinking mode
+- [ ] Citation graph: resolve `to_document_id` for cross-linked decisions
+- [ ] Legislation-to-Case Bridge: reverse lookup from Act + section to citing cases
+- [ ] Always-Fresh Ingestion: cron job for NZLII new decisions
 
 ### Once AMD Ryzen AI Max+ 395 cluster is available (early 2027)
-- [ ] LoRA fine-tuning on NZ legal Q&A dataset (Node 2, 128GB unified memory)
-- [ ] Serve full Qwen3-72B with all layers on GPU (Node 1)
-- [ ] Dedicated Qdrant + Ollama on Node 3 (persistent storage node)
-- [ ] Case citation graph: cross-link related decisions automatically
-- [ ] LLM-based penalty extraction for complex sentences (improves recovery rate coverage)
+
+- [ ] LoRA fine-tuning on NZ legal Q&A dataset (128GB unified memory)
+- [ ] Serve full Qwen3-72B with all layers on GPU
+- [ ] Case citation graph with Neo4j or PostgreSQL recursive CTEs
+- [ ] Similar Cases With Opposite Outcomes: contrastive retrieval for legal argument
+- [ ] LLM-based penalty extraction for complex sentences
 
 ### Once Blackwell is affordable
+
 - [ ] vLLM with speculative decoding for sub-second TTFT
 - [ ] GPU-accelerated embedding at 512+ batch size for large corpus reindex
-- [ ] Neo4j citation graph alongside Qdrant for structured "cases citing X" queries
 
 ---
 

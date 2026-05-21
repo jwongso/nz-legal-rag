@@ -64,19 +64,22 @@ class Generator:
             f"matching the source index. After your answer, list every source you cited."
         )
 
-        resp = await self._client.post(
-            "/chat/completions",
-            json={
-                "model": config.LLM_MODEL,
-                "messages": [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                "max_tokens": config.LLM_MAX_TOKENS,
-                "temperature": config.LLM_TEMPERATURE,
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
-        )
+        payload = {
+            "model": config.LLM_MODEL,
+            "messages": [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            "max_tokens": config.LLM_MAX_TOKENS,
+            "temperature": config.LLM_TEMPERATURE,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        resp = await self._client.post("/chat/completions", json=payload)
+        if resp.status_code == 500:
+            # Retry once - 500 on first call is common when the model is still loading
+            import asyncio
+            await asyncio.sleep(2)
+            resp = await self._client.post("/chat/completions", json=payload)
         resp.raise_for_status()
         answer = resp.json()["choices"][0]["message"]["content"].strip()
 

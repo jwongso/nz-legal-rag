@@ -9,7 +9,10 @@ build/
 .env
 data/raw/
 data/*.json
+data/*.log
 eval/results.json
+eval/bench_results/
+benchmarks/reports/
 .ruff_cache/
 .pytest_cache/
 westlaw_index.txt

@@ -38,7 +38,8 @@ INSERT INTO courts (code, name, jurisdiction, level, nzlii_path) VALUES
     ('NZLCDT',  'Lawyers and Conveyancers Disciplinary Tribunal', 'civil',       4, '/nz/cases/NZLCDT'),
     ('NZHRRT',  'Human Rights Review Tribunal',                   'civil',       4, '/nz/cases/NZHRRT'),
     ('NZREADT', 'Real Estate Agents Disciplinary Tribunal',       'civil',       4, '/nz/cases/NZREADT'),
-    ('NZTT',    'Tenancy Tribunal',                               'civil',       4, '/nz/cases/NZTT');
+    ('NZTT',    'Tenancy Tribunal',                               'civil',       4, '/nz/cases/NZTT'),
+    ('NZLEG',   'New Zealand Legislation',                        'civil',       5, '/nz/legis');
 
 
 CREATE TABLE judges (

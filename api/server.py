@@ -48,6 +48,7 @@ class AskRequest(BaseModel):
     year_to: int | None = None
     top_k: int = config.TOP_K
     flags: list[str] | None = None
+    trace: bool = False
 
 
 class AskResponse(BaseModel):
@@ -55,6 +56,8 @@ class AskResponse(BaseModel):
     answer: str
     sources: list[dict]
     scores: list[float]
+    trace: dict | None = None
+    citation_verification: dict | None = None
 
 
 class SearchResult(BaseModel):
@@ -73,19 +76,26 @@ async def ask(req: AskRequest) -> AskResponse:
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question must not be empty")
 
-    response = await _pipeline.ask(
-        question=req.question,
-        top_k=min(req.top_k, 20),
-        courts=req.courts,
-        year_from=req.year_from,
-        year_to=req.year_to,
-        flags=req.flags or None,
-    )
+    try:
+        response = await _pipeline.ask(
+            question=req.question,
+            top_k=min(req.top_k, 20),
+            courts=req.courts,
+            year_from=req.year_from,
+            year_to=req.year_to,
+            flags=req.flags or None,
+            trace=req.trace,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"LLM generation failed: {exc}") from exc
     return AskResponse(
         question=response.question,
         answer=response.answer,
         sources=response.sources,
         scores=response.scores,
+        trace=response.trace.to_dict() if response.trace else None,
+        citation_verification=response.citation_verification.to_dict()
+            if response.citation_verification else None,
     )
 
 
@@ -294,6 +304,78 @@ async def pg_tracker(req: PGRequest) -> list[PGResult]:
         )
         for h in hits
     ]
+
+
+class ContrastingRequest(BaseModel):
+    query: str
+    domain: str = "criminal"   # "criminal" or "employment"
+    split_by: str | None = None
+    courts: list[str] | None = None
+    year_from: int | None = None
+    year_to: int | None = None
+    top_k: int = 5
+
+
+class ContrastingCaseItem(BaseModel):
+    case_id: str
+    title: str
+    court_name: str
+    date: str
+    url: str
+    score: float
+    structured: dict
+
+
+class ContrastingGroupItem(BaseModel):
+    label: str
+    description: str
+    cases: list[ContrastingCaseItem]
+
+
+class ContrastingResponse(BaseModel):
+    query: str
+    domain: str
+    split_by: str
+    group_a: ContrastingGroupItem
+    group_b: ContrastingGroupItem
+    explanation: str | None = None
+
+
+@app.post("/contrasting-cases", response_model=ContrastingResponse)
+async def contrasting_cases(req: ContrastingRequest) -> ContrastingResponse:
+    """Find semantically similar cases that reached opposite outcomes.
+
+    Contrasting outcomes are drawn from public court decisions and reflect what courts
+    decided in those specific cases. They do not predict what a court would decide in any
+    other situation. Not legal advice. Verify against original sources.
+    """
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Query must not be empty")
+    if req.domain not in ("criminal", "employment"):
+        raise HTTPException(status_code=400, detail="domain must be 'criminal' or 'employment'")
+
+    try:
+        result = await _pipeline.contrasting_cases(
+            query=req.query,
+            domain=req.domain,
+            split_by=req.split_by,
+            courts=req.courts,
+            year_from=req.year_from,
+            year_to=req.year_to,
+            top_k=min(req.top_k, 10),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    d = result.to_dict()
+    return ContrastingResponse(
+        query=d["query"],
+        domain=d["domain"],
+        split_by=d["split_by"],
+        group_a=ContrastingGroupItem(**d["group_a"]),
+        group_b=ContrastingGroupItem(**d["group_b"]),
+        explanation=d["explanation"],
+    )
 
 
 if __name__ == "__main__":

@@ -163,6 +163,55 @@
       font-style: italic;
     }
 
+    .trace-toggle {
+      background: none;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      color: #718096;
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      cursor: pointer;
+      margin-top: 8px;
+      font-family: monospace;
+    }
+    .trace-toggle:hover { background: #f7fafc; color: #2d3748; }
+
+    .trace-panel {
+      margin-top: 8px;
+      background: #1a1a2e;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      line-height: 1.7;
+    }
+    .trace-panel .t-label { color: #68d391; font-weight: bold; }
+    .trace-panel .t-warn  { color: #fc8181; }
+    .trace-panel .t-ok    { color: #68d391; }
+    .trace-panel .t-dim   { color: #718096; }
+    .conf-high   { color: #68d391; font-weight: bold; }
+    .conf-medium { color: #f6e05e; font-weight: bold; }
+    .conf-low    { color: #fc8181; font-weight: bold; }
+
+    #dev-toggle {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: #2d3748;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      font-family: monospace;
+      opacity: 0.7;
+      z-index: 999;
+    }
+    #dev-toggle:hover { opacity: 1; }
+    #dev-toggle.active { background: #2b6cb0; opacity: 1; }
+
     #ask-footer {
       background: #fff;
       border-top: 1px solid #e2e8f0;
@@ -988,7 +1037,7 @@
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px;">
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
-        <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">500k+</div>
+        <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">982k+</div>
         <div style="font-size:0.8rem;color:#666;">decision chunks indexed</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
@@ -996,7 +1045,7 @@
         <div style="font-size:0.8rem;color:#666;">NZ courts and tribunals</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
-        <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">1985-2024</div>
+        <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">1985-2026</div>
         <div style="font-size:0.8rem;color:#666;">NZCA decision coverage</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
@@ -1007,25 +1056,28 @@
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">What this demonstrates</h3>
     <p style="color:#555;margin-bottom:8px;">An on-premise RAG architecture for privacy-sensitive legal workflows, where data residency, legal professional privilege, and operational control are important design constraints.</p>
-    <p style="color:#555;margin-bottom:24px;"><strong>Tech stack:</strong> Python, FastAPI, Qdrant, sentence-transformers, reranking, llama.cpp/Ollama, NZLII ingestion pipeline, REST API, MCP server integration, RAGAS evaluation.</p>
+    <p style="color:#555;margin-bottom:24px;"><strong>Tech stack:</strong> Python, FastAPI, PostgreSQL, Qdrant, sentence-transformers, cross-encoder reranker, llama.cpp/Ollama, NZLII ingestion pipeline, REST API, MCP server integration, RAGAS evaluation, domain-specific benchmark suite.</p>
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">Architecture</h3>
     <pre style="background:#1a1a2e;color:#e2e8f0;padding:16px;border-radius:10px;font-size:0.8rem;overflow-x:auto;margin-bottom:24px;">Ingestion pipeline:
   NZLII / legislation sources
     -> HTML/PDF parsing + PDF fallback for pre-2000 scanned decisions
     -> metadata extraction (court, year, parties, citations)
-    -> section-aware chunking
-    -> sentence-transformer embeddings
+    -> section-aware chunking (120-word windows)
+    -> sentence-transformer embeddings (nomic-embed-text-v1.5)
     -> Qdrant vector index (deterministic UUID5 point IDs, idempotent)
+    -> PostgreSQL relational store (documents, chunks, sentencing_cases,
+       employment_cases - structured metadata for filtered search + BM25)
 
 Query pipeline:
   User question
-    -> query rewriting + metadata filters
-    -> vector search (HNSW, &lt;1ms)
-    -> reranking
-    -> context assembly
-    -> local LLM (llama.cpp/Ollama)
-    -> citation-backed answer</pre>
+    -> SQL pre-filter: PostgreSQL narrows candidates by court, year, offence,
+       grievance type, or outcome fields (sentencing tracker / PG tracker)
+    -> Qdrant semantic search within filtered candidate set
+    -> cross-encoder reranker (bge-reranker-v2-m3)
+    -> context assembly + local LLM generation (llama.cpp/Ollama)
+    -> citation verifier (regex, no extra LLM call)
+    -> citation-backed answer with source URLs</pre>
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">Example query</h3>
     <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:24px;">
@@ -1036,7 +1088,7 @@ Query pipeline:
     </div>
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">Structured trackers</h3>
-    <p style="color:#555;margin-bottom:24px;">Beyond free-text RAG, the system extracts structured fields at ingest time and stores them as Qdrant payload indexes for filtered search - comparable to Westlaw NZ tracker products:</p>
+    <p style="color:#555;margin-bottom:24px;">Beyond free-text RAG, the system extracts structured fields at ingest time via regex and a local LLM, storing them in PostgreSQL and Qdrant payload. PostgreSQL pre-filtering narrows the candidate set before semantic search - comparable to Westlaw NZ tracker products but fully on-premise:</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
       <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
         <div style="font-weight:600;color:#1a1a2e;margin-bottom:4px;">Sentencing Tracker</div>
@@ -1050,7 +1102,7 @@ Query pipeline:
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">Known limitations</h3>
     <ul style="color:#555;font-size:0.88rem;padding-left:20px;margin-bottom:24px;line-height:1.8;">
-      <li>Full coverage currently focuses on NZCA 1985-2024; other courts have partial coverage.</li>
+      <li>Full coverage currently focuses on NZCA 1985-2026; other courts have partial coverage.</li>
       <li>Pre-2000 decisions sourced from scanned PDFs - OCR quality varies.</li>
       <li>Answers depend on source availability and chunking quality; some complex multi-issue cases may be under-represented.</li>
       <li>Research prototype only - not a replacement for professional legal advice.</li>
@@ -1561,7 +1613,7 @@ Query pipeline:
     sendMessage();
   }
 
-  function appendMessage(role, text, sources) {
+  function appendMessage(role, text, sources, trace, cv) {
     const empty = document.getElementById('empty');
     if (empty) empty.remove();
 
@@ -1615,6 +1667,8 @@ Query pipeline:
       msg.appendChild(srcDiv);
     }
 
+    if (role === 'assistant') renderTrace(msg, trace, cv);
+
     chat.appendChild(msg);
     chat.scrollTop = chat.scrollHeight;
     return msg;
@@ -1653,7 +1707,7 @@ Query pipeline:
     sendBtn.disabled = true;
     showTyping();
 
-    const body = { question: q };
+    const body = { question: q, trace: devMode };
     const court    = document.getElementById('court').value;
     const yearFrom = document.getElementById('year_from').value;
     const yearTo   = document.getElementById('year_to').value;
@@ -1670,7 +1724,7 @@ Query pipeline:
       const data = await res.json();
       removeTyping();
       if (res.ok) {
-        appendMessage('assistant', data.answer, data.sources);
+        appendMessage('assistant', data.answer, data.sources, data.trace, data.citation_verification);
       } else {
         appendMessage('assistant', 'Error: ' + (data.detail || 'Something went wrong.'), null);
       }
@@ -1681,6 +1735,75 @@ Query pipeline:
 
     sendBtn.disabled = false;
     input.focus();
+  }
+</script>
+
+<button id="dev-toggle" title="Toggle developer trace mode" onclick="toggleDev()">DEV</button>
+
+<script>
+  let devMode = false;
+
+  function toggleDev() {
+    devMode = !devMode;
+    const btn = document.getElementById('dev-toggle');
+    btn.classList.toggle('active', devMode);
+    btn.textContent = devMode ? 'DEV ON' : 'DEV';
+  }
+
+  function confidenceClass(level) {
+    if (level === 'high')   return 'conf-high';
+    if (level === 'medium') return 'conf-medium';
+    return 'conf-low';
+  }
+
+  function renderTrace(msg, trace, cv) {
+    if (!trace) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'trace-toggle';
+    btn.textContent = 'Show trace';
+
+    const panel = document.createElement('div');
+    panel.className = 'trace-panel';
+    panel.style.display = 'none';
+
+    const lat = trace.latency_ms || {};
+    const counts = trace.counts || {};
+    const models = trace.models || {};
+
+    let sqlLine = '';
+    if (trace.strategy === 'sql_first_hybrid') {
+      const filters = trace.sql_filters ? Object.entries(trace.sql_filters)
+        .map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ') : '';
+      sqlLine = `<div><span class="t-label">SQL</span>  ${filters || 'no filters'} &rarr; ${trace.sql_point_ids_count} IDs</div>`;
+    }
+
+    let cvLine = '';
+    if (cv) {
+      const confCls = confidenceClass(cv.evidence_confidence);
+      const warn = cv.has_warning ? '<span class="t-warn"> [!]</span>' : '';
+      const orphans = cv.orphan_citations.length ? ` | orphan: [${cv.orphan_citations.join(',')}]` : '';
+      cvLine = `<div><span class="t-label">Citations</span>  <span class="${confCls}">${cv.evidence_confidence.toUpperCase()}</span>${warn} &mdash; ${cv.cited_count} cited${orphans}</div>`;
+    }
+
+    panel.innerHTML = `
+      <div><span class="t-label">Strategy</span> ${trace.strategy}</div>
+      ${sqlLine}
+      <div><span class="t-label">Qdrant</span>   ${counts.qdrant_candidates} &rarr; ${counts.after_dedup} (dedup) &rarr; ${counts.after_rerank} (final)</div>
+      <div><span class="t-label">Latency</span>  embed ${lat.embed}ms | sql ${lat.sql}ms | qdrant ${lat.qdrant}ms | rerank ${lat.rerank}ms | gen ${lat.generate}ms | <strong>total ${lat.total}ms</strong></div>
+      <div><span class="t-label">Scores</span>   ${(trace.top_scores || []).map(s => s.toFixed(3)).join('  ')}</div>
+      <div><span class="t-label">Models</span>   ${models.llm || '-'} | embed: ${models.embedding || '-'} | reranker: ${models.reranker_enabled ? 'on' : 'off'}</div>
+      ${cvLine}
+    `;
+
+    btn.addEventListener('click', () => {
+      const hidden = panel.style.display === 'none';
+      panel.style.display = hidden ? 'block' : 'none';
+      btn.textContent = hidden ? 'Hide trace' : 'Show trace';
+    });
+
+    msg.appendChild(btn);
+    msg.appendChild(panel);
   }
 </script>
 </body>

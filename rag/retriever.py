@@ -24,6 +24,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    HasIdCondition,
     MatchAny,
     MatchValue,
     PointStruct,
@@ -147,6 +148,45 @@ class VectorStore:
             query=query_vector,
             limit=top_k,
             query_filter=query_filter,
+            with_payload=True,
+        ).points
+        return [SearchResult(h.payload, h.score) for h in hits]
+
+    def search_filtered(
+        self,
+        query_vector: list[float],
+        query_filter: Filter,
+        top_k: int = config.TOP_K,
+    ) -> list[SearchResult]:
+        """Semantic search with an arbitrary pre-built Qdrant filter."""
+        hits = self._client.query_points(
+            collection_name=config.QDRANT_COLLECTION,
+            query=query_vector,
+            limit=top_k,
+            query_filter=query_filter,
+            with_payload=True,
+        ).points
+        return [SearchResult(h.payload, h.score) for h in hits]
+
+    def search_within(
+        self,
+        query_vector: list[float],
+        point_ids: list[str],
+        top_k: int = config.TOP_K,
+    ) -> list[SearchResult]:
+        """Semantic search restricted to a specific set of qdrant_point_ids.
+
+        Used for SQL-first hybrid retrieval: PostgreSQL narrows the candidate set,
+        Qdrant ranks semantically within it.
+        """
+        if not point_ids:
+            return []
+
+        hits = self._client.query_points(
+            collection_name=config.QDRANT_COLLECTION,
+            query=query_vector,
+            limit=top_k,
+            query_filter=Filter(must=[HasIdCondition(has_id=point_ids)]),
             with_payload=True,
         ).points
         return [SearchResult(h.payload, h.score) for h in hits]
