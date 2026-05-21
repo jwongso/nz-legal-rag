@@ -47,9 +47,10 @@ leaves the machine.
                     |  2. SQL pre-filter (FilterParams) [opt]  |
                     |  3. Qdrant semantic search               |
                     |  4. deduplicate (one chunk per case)     |
-                    |  5. cross-encoder rerank [opt]           |
-                    |  6. generate answer via LLM             |
-                    |  7. verify citations (no LLM call)      |
+                    |  5. legal authority ranker (intent-aware)|
+                    |  6. cross-encoder rerank [opt]           |
+                    |  7. generate answer via LLM             |
+                    |  8. verify citations (no LLM call)      |
                     +-----------+-----------+-----------+-------+
                                 |           |           |
           +---------------------+     +-----v------+   |
@@ -103,7 +104,8 @@ NZLII hosts HTML decisions for most courts. Tenancy Tribunal (NZTT) decisions
 are PDF-only on NZLII - the scraper fetches and extracts these via pypdf.
 
 Current coverage: **2020-2026** across all courts (NZCA fully indexed from 2020).
-182,000+ chunks indexed. All sources are publicly available. No proprietary data required.
+982,000+ chunks indexed across 23,500+ documents. All sources are publicly available.
+No proprietary data required.
 
 ---
 

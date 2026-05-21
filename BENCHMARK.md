@@ -1,7 +1,8 @@
 # NZ Legal RAG - Benchmark Results
 
-Benchmarks run on 2026-05-21. Source data: `benchmarks/reports/comprehensive_report.md`
-and `benchmarks/reports/rerank_sweep.md`.
+Benchmarks run on 2026-05-21 (initial) and 2026-05-22 (legal ranker). Source data:
+`benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
+and `benchmarks/reports/latest.json`.
 
 ---
 
@@ -125,7 +126,11 @@ Queries: 30. Gold dataset: `benchmarks/datasets/retrieval_gold.jsonl`.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | vector_only | 0.00 | 0.13 | 0.70 | 0.13 | 0.87 | 0.045 | 0.00 |
 | sql_filter_vector | 0.03 | 0.23 | 1.00 | 0.27 | 1.00 | 0.112 | 0.00 |
-| sql_filter_vector_rerank | 0.07 | 0.20 | 0.80 | 0.30 | 0.87 | 0.142 | 0.00 |
+| sql_filter_vector_rerank (N=20) | 0.07 | 0.20 | 0.80 | 0.30 | 0.87 | 0.142 | 0.00 |
+| sql_filter_vector_legal | 0.10 | 0.23 | 1.00 | 0.27 | 1.00 | **0.154** | 0.00 |
+| sql_filter_vector_legal_rerank_5 | 0.10 | 0.23 | 0.93 | 0.23 | 0.93 | 0.118 | 0.00 |
+
+**Current production pipeline: `sql_filter_vector_legal` (RERANK_MODE=off)**
 
 ### Per task type
 
@@ -206,21 +211,35 @@ At N=5: 929 ms, 0 regressions, H@5(rel)=1.00 - identical to the no-reranker base
 At N=20 (old implicit behavior): 3,908 ms, 6 regressions, H@5(rel)=0.80.
 Defaulting to off saves ~930 ms per query with no quality loss at N=5.
 
-### 2. Legal authority ranker added (rag/legal_ranker.py)
+### 2. Intent-aware legal ranker (rag/legal_ranker.py)
 
-Deterministic re-scoring applied after Qdrant dedup, before the cross-encoder.
-Blends vector score with court authority hierarchy, early chunk boost, citation
-density, and statute/recency signals from the query. Pre-orders candidates so
-the cross-encoder's capped-5 window contains the most authoritative sources.
+Deterministic re-scoring applied after Qdrant dedup. Four profiles, each tuned
+for a different query intent detected from the query text:
 
-Court authority weights:
+| Mode | authority_weight | Key signal | Triggered by |
+|---|---:|---|---|
+| authority | 0.18 | court hierarchy, citation density | principle/doctrine queries (default) |
+| example | 0.04 | recency +0.05 | "find", "examples of", year in query |
+| tracker | 0.05 | structured payload +0.04 | starting points, guilty plea, sentencing range |
+| statute | 0.22 | legislation chunk +0.15 | s103A, section 127, specific section refs |
+
+The planner can set the mode explicitly; heuristic detection is the fallback.
+
+Result: MRR improved from 0.112 to 0.154 (+37%) with zero regressions at H@5(r).
+H@10(g) also maintained at 0.27 - profile-aware weighting stopped example/tracker
+queries from over-promoting high-authority NZCA docs over lower-court gold docs.
+
+Court authority weights (used at varying strength per profile):
 NZSC=1.00, NZLEG=0.95, NZCA=0.85, NZHC=0.70, NZEmpC=0.65 ...
 
-### 3. New benchmark pipelines added
+### 3. Cross-encoder confirmed harmful even at N=5 after legal ranker
 
-`sql_filter_vector_legal` and `sql_filter_vector_legal_rerank_5` added to
-`run_retrieval.py` to quantify the legal ranker's impact. Results pending
-the next benchmark run.
+`sql_filter_vector_legal_rerank_5` regresses on statute queries (H@5(r) drops
+from 1.00 to 0.93). The statute_mode ranker surfaces legislation chunks first,
+but the cross-encoder at N=5 then picks the wrong one from those candidates.
+
+RERANK_MODE=off is the confirmed production default. The profile-aware legal
+ranker alone outperforms legal ranker + cross-encoder.
 
 ---
 
@@ -228,10 +247,10 @@ the next benchmark run.
 
 In priority order based on analysis:
 
-1. Legal ranker impact: compare `sql_filter_vector_legal` vs. `sql_filter_vector`
-2. Gated rerank strategy: skip reranker when top-1 vector score exceeds threshold
-3. Hybrid BM25 + vector with RRF fusion
-4. Oracle filters vs. auto-planner filters (measures planner readiness)
-5. Statute-specific exact lookup route
-6. Tracker-first route for sentencing and PG queries
-7. Context packing benchmark (chunk count, metadata headers, grouping)
+1. ~~Legal ranker impact~~ - done. MRR +37%, zero regressions. Locked as baseline.
+2. ~~Reranker candidate sweep and gated strategy~~ - done. RERANK_MODE=off confirmed.
+3. Hybrid BM25 + vector with RRF fusion - likely win for statute and exact-phrase queries
+4. Oracle filters vs. auto-planner filters - measures planner readiness for production
+5. Tracker-first route for sentencing and PG queries - structured SQL before vector
+6. Context packing benchmark (chunk count, metadata headers, grouping)
+7. Citation support benchmark (citation_exists / in_context / supports_claim)
