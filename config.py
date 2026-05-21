@@ -23,6 +23,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
 RERANKER_ENABLED = os.getenv("RERANKER_ENABLED", "true").lower() == "true"
+RERANKER_CANDIDATES = int(os.getenv("RERANKER_CANDIDATES", "5"))
 
 NZLII_BASE = "https://www.nzlii.org"
 

@@ -234,6 +234,7 @@ async def run(questions_path: Path, llm_url: str, model: str, quick: bool) -> No
     out = _RESULTS_DIR / f"generator_{ts}.json"
     out.write_text(json.dumps({"summary": summary, "runs": runs}, indent=2))
     print(f"\nResults -> {out}")
+    return {"summary": summary, "runs": runs}
 
 
 def main() -> None:

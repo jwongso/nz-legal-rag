@@ -15,6 +15,11 @@ Scoring (per query, per pipeline):
   mrr           1 / rank of first expected_document, 0 if none found
   irr@5         fraction of top-5 results from must_not_include_courts
 
+Both hit_gold and hit_rel are shown in the summary. Gold measures exact match on the
+canonical answer set. Rel measures whether any relevant answer was retrieved, including
+acceptable alternatives. sql_filter_vector achieving hit_rel@5=1.00 means it finds at
+least one topically relevant document in every query when an oracle court filter is used.
+
 Reports written to benchmarks/reports/:
   latest.json       full per-query, per-pipeline results
   latest.md         summary table
@@ -42,11 +47,19 @@ from rag.retriever import VectorStore
 
 _GOLD_PATH = Path("benchmarks/datasets/retrieval_gold.jsonl")
 _REPORTS_DIR = Path("benchmarks/reports")
-_TOP_K = 10
-_RERANK_TOP_K = 5
+_FETCH_K = 50          # chunks fetched from Qdrant (deduped to unique docs before scoring)
+_RERANK_FETCH_K = 100  # wider pool for reranker
+_RERANK_TOP_K = 20
 
-_ALL_PIPELINES = ["vector_only", "sql_filter_vector", "sql_filter_vector_rerank"]
-_HIT_K_VALUES = [1, 3, 5, 10]
+_ALL_PIPELINES = [
+    "vector_only",
+    "sql_filter_vector",
+    "sql_filter_vector_rerank",
+    "sql_filter_vector_legal",
+    "sql_filter_vector_legal_rerank_5",
+]
+_HIT_K_VALUES = [1, 3, 5, 10, 20]
+_LEGAL_RERANK_CANDIDATES = 5
 
 
 # ---------------------------------------------------------------------------
@@ -119,13 +132,27 @@ def _score(case_ids: list[str], gold: dict,
 # Pipeline execution
 # ---------------------------------------------------------------------------
 
-async def _run_vector_only(query_vec: list[float], store: VectorStore) -> list[str]:
-    hits = store.search(query_vec, top_k=_TOP_K)
+def _dedup(hits) -> list[str]:
+    """Deduplicate hits to one entry per case_id, keeping best score, preserving rank order."""
     seen: dict[str, float] = {}
     for h in hits:
         if h.case_id not in seen or h.score > seen[h.case_id]:
             seen[h.case_id] = h.score
     return sorted(seen, key=seen.__getitem__, reverse=True)
+
+
+def _dedup_sr(hits) -> list:
+    """Deduplicate to one SearchResult per case_id (best score), sorted descending."""
+    seen: dict[str, object] = {}
+    for h in hits:
+        if h.case_id not in seen or h.score > seen[h.case_id].score:  # type: ignore[union-attr]
+            seen[h.case_id] = h
+    return sorted(seen.values(), key=lambda x: x.score, reverse=True)  # type: ignore[union-attr]
+
+
+async def _run_vector_only(query_vec: list[float], store: VectorStore) -> list[str]:
+    hits = store.search(query_vec, top_k=_FETCH_K)
+    return _dedup(hits)
 
 
 async def _run_sql_filter_vector(query_vec: list[float], store: VectorStore,
@@ -134,12 +161,8 @@ async def _run_sql_filter_vector(query_vec: list[float], store: VectorStore,
     point_ids = _get_point_ids_for_courts(conn, courts, years)
     if not point_ids:
         return await _run_vector_only(query_vec, store)
-    hits = store.search_within(query_vec, point_ids, top_k=_TOP_K)
-    seen: dict[str, float] = {}
-    for h in hits:
-        if h.case_id not in seen or h.score > seen[h.case_id]:
-            seen[h.case_id] = h.score
-    return sorted(seen, key=seen.__getitem__, reverse=True)
+    hits = store.search_within(query_vec, point_ids, top_k=_FETCH_K)
+    return _dedup(hits)
 
 
 async def _run_sql_filter_vector_rerank(query: str, query_vec: list[float],
@@ -148,12 +171,44 @@ async def _run_sql_filter_vector_rerank(query: str, query_vec: list[float],
                                          years: list[int] | None,
                                          reranker: Reranker) -> list[str]:
     point_ids = _get_point_ids_for_courts(conn, courts, years)
-    if not point_ids:
-        hits = store.search(query_vec, top_k=_TOP_K * 2)
-    else:
-        hits = store.search_within(query_vec, point_ids, top_k=_TOP_K * 2)
-
+    hits = store.search_within(query_vec, point_ids, top_k=_RERANK_FETCH_K) \
+           if point_ids else store.search(query_vec, top_k=_RERANK_FETCH_K)
     reranked = reranker.rerank(query, hits, top_k=_RERANK_TOP_K)
+    seen: dict[str, float] = {}
+    for i, h in enumerate(reranked):
+        if h.case_id not in seen:
+            seen[h.case_id] = len(reranked) - i
+    return sorted(seen, key=seen.__getitem__, reverse=True)
+
+
+async def _run_sql_filter_vector_legal(query: str, query_vec: list[float],
+                                        store: VectorStore, conn,
+                                        courts: list[str],
+                                        years: list[int] | None) -> list[str]:
+    from rag.legal_ranker import QueryContext, rerank as legal_rerank
+    point_ids = _get_point_ids_for_courts(conn, courts, years)
+    hits = store.search_within(query_vec, point_ids, top_k=_FETCH_K) \
+           if point_ids else store.search(query_vec, top_k=_FETCH_K)
+    deduped = _dedup_sr(hits)
+    ctx = QueryContext.from_query(query)
+    ordered = legal_rerank(deduped, ctx)
+    return [h.case_id for h in ordered]
+
+
+async def _run_sql_filter_vector_legal_rerank_5(query: str, query_vec: list[float],
+                                                 store: VectorStore, conn,
+                                                 courts: list[str],
+                                                 years: list[int] | None,
+                                                 reranker: Reranker) -> list[str]:
+    from rag.legal_ranker import QueryContext, rerank as legal_rerank
+    point_ids = _get_point_ids_for_courts(conn, courts, years)
+    hits = store.search_within(query_vec, point_ids, top_k=_RERANK_FETCH_K) \
+           if point_ids else store.search(query_vec, top_k=_RERANK_FETCH_K)
+    deduped = _dedup_sr(hits)
+    ctx = QueryContext.from_query(query)
+    legal_ordered = legal_rerank(deduped, ctx)
+    candidates = legal_ordered[:_LEGAL_RERANK_CANDIDATES]
+    reranked = reranker.rerank(query, candidates, top_k=_LEGAL_RERANK_CANDIDATES)
     seen: dict[str, float] = {}
     for i, h in enumerate(reranked):
         if h.case_id not in seen:
@@ -196,10 +251,12 @@ def _write_reports(all_results: list[dict], gold_records: list[dict],
         f"",
         f"Generated: {ts}  |  Queries: {len(gold_records)}  |  Corpus: nz_legal",
         f"",
+        f"> Gold = exact expected document hit. Rel = expected OR acceptable document hit.",
+        f"",
         f"## Pipeline Summary",
         f"",
-        "| Pipeline | Hit@1 | Hit@5 | Hit@10 | MRR | IRR@5 |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Pipeline | Hit@1(g) | Hit@5(g) | Hit@5(r) | Hit@10(g) | Hit@10(r) | MRR | IRR@5 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     aggregates = {}
     for p in pipelines_run:
@@ -210,7 +267,9 @@ def _write_reports(all_results: list[dict], gold_records: list[dict],
             f"| {p} "
             f"| {agg['hit_gold_at_1']:.2f} "
             f"| {agg['hit_gold_at_5']:.2f} "
+            f"| {agg['hit_rel_at_5']:.2f} "
             f"| {agg['hit_gold_at_10']:.2f} "
+            f"| {agg['hit_rel_at_10']:.2f} "
             f"| {agg['mrr']:.3f} "
             f"| {agg['irr_at_5']:.2f} |"
         )
@@ -219,8 +278,8 @@ def _write_reports(all_results: list[dict], gold_records: list[dict],
         "",
         "## Per-Task-Type Breakdown",
         "",
-        "| Task Type | Pipeline | Hit@5 | MRR |",
-        "|---|---|---:|---:|",
+        "| Task Type | Pipeline | Hit@5(g) | Hit@5(r) | MRR |",
+        "|---|---|---:|---:|---:|",
     ]
     task_types = sorted(set(r["task_type"] for r in all_results))
     for tt in task_types:
@@ -232,18 +291,22 @@ def _write_reports(all_results: list[dict], gold_records: list[dict],
                 lines.append(
                     f"| {tt} | {p} "
                     f"| {agg['hit_gold_at_5']:.2f} "
+                    f"| {agg['hit_rel_at_5']:.2f} "
                     f"| {agg['mrr']:.3f} |"
                 )
 
     lines += ["", "## Per-Query Results", ""]
-    lines.append("| Query ID | Task | " +
-                 " | ".join(f"{p[:20]} H@5" for p in pipelines_run) + " |")
-    lines.append("|---|---|" + "|---:" * len(pipelines_run) + "|")
+    header_parts = []
+    for p in pipelines_run:
+        header_parts.append(f"{p[:18]} H@5(g)")
+        header_parts.append(f"{p[:18]} H@5(r)")
+    lines.append("| Query ID | Task | " + " | ".join(header_parts) + " |")
+    lines.append("|---|---|" + "|---:" * len(pipelines_run) * 2 + "|")
     for r in all_results:
         row = f"| {r['id']} | {r['task_type']} "
         for p in pipelines_run:
             sc = r.get("scores", {}).get(p, {})
-            row += f"| {sc.get('hit_gold_at_5', '-')} "
+            row += f"| {sc.get('hit_gold_at_5', '-')} | {sc.get('hit_rel_at_5', '-')} "
         row += "|"
         lines.append(row)
 
@@ -311,7 +374,11 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
     conn = psycopg2.connect(dbname="nz_legal")
     embedder = Embedder()
     store = VectorStore()
-    reranker = Reranker() if "sql_filter_vector_rerank" in pipelines else None
+    needs_reranker = (
+        "sql_filter_vector_rerank" in pipelines
+        or "sql_filter_vector_legal_rerank_5" in pipelines
+    )
+    reranker = Reranker() if needs_reranker else None
 
     # Pre-build court lookup for scoring (citation -> court code)
     all_citations = set()
@@ -354,6 +421,18 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
             scores["sql_filter_vector_rerank"] = _score(ids, gold, court_lookup)
             top5["sql_filter_vector_rerank"] = ids[:5]
 
+        if "sql_filter_vector_legal" in pipelines:
+            ids = await _run_sql_filter_vector_legal(q, vec, store, conn, courts, years)
+            scores["sql_filter_vector_legal"] = _score(ids, gold, court_lookup)
+            top5["sql_filter_vector_legal"] = ids[:5]
+
+        if "sql_filter_vector_legal_rerank_5" in pipelines and reranker:
+            ids = await _run_sql_filter_vector_legal_rerank_5(
+                q, vec, store, conn, courts, years, reranker
+            )
+            scores["sql_filter_vector_legal_rerank_5"] = _score(ids, gold, court_lookup)
+            top5["sql_filter_vector_legal_rerank_5"] = ids[:5]
+
         all_results.append({
             "id": gold["id"],
             "query": q,
@@ -370,7 +449,7 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
             print(
                 f"  {p[:28]:<28} "
                 f"H@1={sc.get('hit_gold_at_1','-')} "
-                f"H@5={sc.get('hit_gold_at_5','-')} "
+                f"H@5={sc.get('hit_gold_at_5','-')}(g)/{sc.get('hit_rel_at_5','-')}(r) "
                 f"MRR={sc.get('mrr',0):.3f} "
                 f"IRR={sc.get('irr_at_5',0):.2f}"
             )
@@ -382,9 +461,8 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
         agg = _aggregate(runs)
         print(
             f"  {p:<30} "
-            f"H@1={agg['hit_gold_at_1']:.2f}  "
-            f"H@5={agg['hit_gold_at_5']:.2f}  "
-            f"H@10={agg['hit_gold_at_10']:.2f}  "
+            f"H@5={agg['hit_gold_at_5']:.2f}(g)/{agg['hit_rel_at_5']:.2f}(r)  "
+            f"H@10={agg['hit_gold_at_10']:.2f}(g)/{agg['hit_rel_at_10']:.2f}(r)  "
             f"MRR={agg['mrr']:.3f}  "
             f"IRR@5={agg['irr_at_5']:.2f}"
         )
@@ -395,6 +473,7 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
 
     await embedder.close()
     conn.close()
+    return all_results, gold_records, pipelines
 
 
 def main() -> None:

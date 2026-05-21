@@ -128,10 +128,16 @@ class RAGPipeline:
         if tr:
             tr.after_dedup = len(hits)
 
-        # Rerank with cross-encoder if enabled
+        # Legal authority ranker: re-orders by court hierarchy + legal signals
+        from rag.legal_ranker import QueryContext, rerank as legal_rerank
+        ctx = QueryContext.from_query(question)
+        hits = legal_rerank(hits, ctx)
+
+        # Cross-encoder on top RERANKER_CANDIDATES only (default 5)
         t0 = time.monotonic()
         if self._reranker is not None:
-            hits = self._reranker.rerank(question, hits, top_k)
+            candidates = hits[:config.RERANKER_CANDIDATES]
+            hits = self._reranker.rerank(question, candidates, top_k)
         else:
             hits = hits[:top_k]
         if tr:
@@ -191,9 +197,15 @@ class RAGPipeline:
                 courts=courts, year_from=year_from, year_to=year_to, flags=flags,
             )
 
-        hits = _deduplicate(hits, top_k)
+        hits = _deduplicate(hits, top_k * 2)
+        from rag.legal_ranker import QueryContext, rerank as legal_rerank
+        ctx = QueryContext.from_query(query)
+        hits = legal_rerank(hits, ctx)
         if self._reranker is not None:
-            hits = self._reranker.rerank(query, hits, top_k)
+            candidates = hits[:config.RERANKER_CANDIDATES]
+            hits = self._reranker.rerank(query, candidates, top_k)
+        else:
+            hits = hits[:top_k]
         return hits
 
     def search_notable(

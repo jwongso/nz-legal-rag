@@ -166,6 +166,7 @@ async def run(questions_path: Path, quick: bool) -> None:
     print(f"\nResults -> {out}")
 
     await embedder.close()
+    return summary
 
 
 def main() -> None:
