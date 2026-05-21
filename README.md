@@ -1,55 +1,13 @@
 # nz-legal-rag
 
-On-premise retrieval-augmented generation pipeline for New Zealand legal research.
-Indexes NZ court decisions and legislation into a local vector database, then answers
-legal questions with citations - entirely on your own hardware.
+On-premise RAG pipeline for New Zealand legal research - ingesting 500,000+ court
+decisions into a local vector database with structured trackers comparable to Westlaw NZ,
+running entirely on local hardware.
 
-Built for law firms, barristers, and legal practitioners who cannot send client
-queries to a cloud AI due to legal professional privilege and the NZ Privacy Act 2020.
-
----
-
-## Personal note
-
-I am not a big fan of cloud-first architecture. I prefer on-premise, or at minimum
-a hybrid approach where sensitive data never leaves your own hardware.
-
-This is not just a technical preference. It is a risk management position.
-
-Most cloud AI providers operate under US law and store data on US soil. The CLOUD Act
-(2018) allows US law enforcement to compel American companies to hand over data stored
-anywhere in the world, without notifying the data owner. The legal and political
-environment around that is not stable. If the current US administration - or any future
-one - decides to act aggressively on data access, there is very little a NZ law firm
-or a NZ government agency can do to protect client data stored on AWS, Azure, or GCP.
-
-This is not theoretical. In Microsoft Corp. v. United States, the Second Circuit
-actually ruled in Microsoft's favour - finding that US warrants could not compel
-production of data stored in Dublin, Ireland. Rather than accept that limit, Congress
-passed the CLOUD Act in March 2018, which legislatively overrode the ruling and
-explicitly extended US warrant authority to data stored anywhere in the world by
-US-based companies. The Supreme Court then dismissed the case as moot on April 17,
-2018. A NZ company has essentially no standing to challenge a US government data
-demand in a US court. Your NZ lawyers cannot help you there.
-
-The phrase "national security" is the catch-all that makes normal legal protections
-disappear. We have watched the current US administration use that label - and similar
-vague justifications - to impose trade tariffs, sanction companies, and rewrite
-agreements overnight with no warning. The same logic applied to data access is not a
-stretch. It is the same playbook.
-
-If your sensitive business data sits on AWS, Azure, or GCP - regardless of which
-region - you are operating under US jurisdiction whether you agreed to that or not.
-"Australia region" is not a legal shield. It is a marketing label on US-company
-infrastructure subject to US law.
-
-You may think that is unlikely to affect you. Maybe. But "unlikely" is not the
-standard a lawyer applies to their client's privileged communications. And it is not
-the standard I apply when designing systems that handle sensitive data.
-
-On-premise is not about being anti-cloud or anti-American. It is about knowing where
-your data is, who controls it, and what jurisdiction it lives under. For NZ legal,
-health, and financial data, the answer should be: here, us, and New Zealand.
+This project explores an on-premise RAG architecture for privacy-sensitive legal workflows,
+where data residency, legal professional privilege, and operational control are important
+design constraints. All inference, retrieval, and storage run on client hardware - no data
+leaves the machine.
 
 ---
 
