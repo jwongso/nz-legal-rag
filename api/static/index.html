@@ -638,6 +638,12 @@
 </head>
 <body>
 
+<div id="legal-banner" style="background:#7b341e;color:#fff;font-size:0.8rem;padding:8px 24px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+  <span>&#9888;</span>
+  <span><strong>Research prototype only.</strong> Not legal advice. This tool retrieves and summarises public legal sources. It is not a lawyer or law firm and must not be relied on for legal decisions. Do not enter confidential or identifying information. For advice about your situation, consult a qualified New Zealand lawyer.</span>
+  <button onclick="document.getElementById('legal-banner').style.display='none'" style="margin-left:auto;background:none;border:none;color:#fff;cursor:pointer;font-size:1rem;padding:0 4px;">&#x2715;</button>
+</div>
+
 <header>
   <h1>NZ Legal RAG</h1>
   <span>Self-hosted AI legal research prototype - all queries stay on your hardware</span>
@@ -661,8 +667,11 @@
     <div class="empty-state" id="empty">
       <h2>Ask a legal question</h2>
       <p>Searches 500,000+ NZ court decision chunks across 13 courts (NZHC, NZCA, NZSC, NZFC, NZEnvC, NZERA, NZACC, NZTT and more) 1985-2024, plus NZ legislation. Answers include citations to source decisions.</p>
-      <p style="margin-top:8px;font-size:0.82rem;color:#e53e3e;font-weight:500;">Research prototype only. Not legal advice - consult a qualified NZ lawyer for your specific situation.</p>
-      <div class="suggestions">
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:0.82rem;color:#555;cursor:pointer;">
+        <input type="checkbox" id="disclaimer-ack" style="margin-top:2px;flex-shrink:0;">
+        I understand this is a research prototype, not legal advice, and I will not enter confidential or identifying information about any real person or legal matter.
+      </label>
+      <div class="suggestions" style="margin-top:14px;">
         <div class="suggestion" onclick="suggest(this)">Can a landlord evict for unpaid rent?</div>
         <div class="suggestion" onclick="suggest(this)">What is unjustified dismissal?</div>
         <div class="suggestion" onclick="suggest(this)">Test for granting an injunction?</div>
@@ -1583,7 +1592,7 @@ Query pipeline:
     if (role === 'assistant') {
       const disc = document.createElement('div');
       disc.className = 'disclaimer';
-      disc.textContent = 'Not legal advice. Consult a qualified NZ lawyer for your specific situation.';
+      disc.textContent = 'This answer is generated from retrieved public sources and may be incomplete or incorrect. Verify all citations against the original source. Not legal advice - consult a qualified NZ lawyer for your specific situation.';
       msg.appendChild(disc);
     }
 
@@ -1631,6 +1640,12 @@ Query pipeline:
   async function sendMessage() {
     const q = input.value.trim();
     if (!q || sendBtn.disabled) return;
+    const ack = document.getElementById('disclaimer-ack');
+    if (ack && !ack.checked) {
+      ack.closest('label').style.color = '#e53e3e';
+      ack.focus();
+      return;
+    }
 
     appendMessage('user', q);
     input.value = '';
