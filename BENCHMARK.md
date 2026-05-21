@@ -192,11 +192,19 @@ other relevant documents from the top-5 window.
 
 Based on the benchmark results, the following production changes were applied:
 
-### 1. Cap reranker candidates at 5 (config: RERANKER_CANDIDATES=5)
+### 1. RERANK_MODE enum (off by default)
 
-At N=5: 929 ms, 0 regressions, H@5(rel)=1.00.
-At N=20 (previous implicit behavior): 3,908 ms, 6 regressions, H@5(rel)=0.80.
-Capping at 5 reduces reranker latency by 4x and eliminates regressions.
+Replaces the old RERANKER_ENABLED + RERANKER_CANDIDATES pair.
+
+```
+RERANK_MODE=off          # default - skip cross-encoder, use legal ranker only
+RERANK_MODE=rerank_5     # cross-encoder on top 5 legal-ranked candidates (~930 ms)
+RERANK_MODE=rerank_N     # cross-encoder on top N candidates
+```
+
+At N=5: 929 ms, 0 regressions, H@5(rel)=1.00 - identical to the no-reranker baseline.
+At N=20 (old implicit behavior): 3,908 ms, 6 regressions, H@5(rel)=0.80.
+Defaulting to off saves ~930 ms per query with no quality loss at N=5.
 
 ### 2. Legal authority ranker added (rag/legal_ranker.py)
 

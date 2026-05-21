@@ -49,7 +49,7 @@ class RAGPipeline:
         self._embedder = Embedder()
         self._store = VectorStore()
         self._generator = Generator()
-        self._reranker = Reranker() if config.RERANKER_ENABLED else None
+        self._reranker = Reranker() if config.RERANK_CANDIDATES is not None else None
 
     async def ask(
         self,
@@ -133,10 +133,10 @@ class RAGPipeline:
         ctx = QueryContext.from_query(question)
         hits = legal_rerank(hits, ctx)
 
-        # Cross-encoder on top RERANKER_CANDIDATES only (default 5)
+        # Cross-encoder on top RERANK_CANDIDATES (off by default, see RERANK_MODE)
         t0 = time.monotonic()
         if self._reranker is not None:
-            candidates = hits[:config.RERANKER_CANDIDATES]
+            candidates = hits[:config.RERANK_CANDIDATES]
             hits = self._reranker.rerank(question, candidates, top_k)
         else:
             hits = hits[:top_k]
@@ -202,7 +202,7 @@ class RAGPipeline:
         ctx = QueryContext.from_query(query)
         hits = legal_rerank(hits, ctx)
         if self._reranker is not None:
-            candidates = hits[:config.RERANKER_CANDIDATES]
+            candidates = hits[:config.RERANK_CANDIDATES]
             hits = self._reranker.rerank(query, candidates, top_k)
         else:
             hits = hits[:top_k]
