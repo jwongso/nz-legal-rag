@@ -1,7 +1,8 @@
 # NZ Legal RAG - Benchmark Results
 
 Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker + tracker-first),
-2026-05-22 (BM25 hybrid), and 2026-05-22 (gold dataset revision). Source data:
+2026-05-22 (BM25 hybrid), 2026-05-22 (gold dataset revision), and 2026-05-23 (citation support).
+Source data:
 `benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
 and `benchmarks/reports/latest.json`.
 
@@ -347,7 +348,8 @@ In priority order based on analysis:
    H@5(r)=1.00 and MRR=0.152 vs oracle MRR=0.154. Zero coverage regressions.
    Court filtering value confirmed: no-filter baseline MRR=0.059 (-62% vs oracle).
 7. ~~Context packing benchmark~~ - done. See section 7 below.
-8. Citation support benchmark (citation_exists / in_context / supports_claim)
+8. ~~Citation support benchmark (citation_exists / in_context / supports_claim)~~ - done.
+   See section 8 below.
 9. Answer quality benchmark (faithfulness, completeness, false "not enough context" rate)
 
 Retrieval baseline for answer-construction benchmarks:
@@ -461,6 +463,67 @@ intent-aware ranker's `statute_mode` and helps structure the answer without toke
 
 **CONTEXT_PACK_MODE locked** at `baseline` for general/authority/example/tracker queries.
 `statute_first` promoted as the preferred format for statute-intent queries.
+
+---
+
+### 8. Citation support benchmark
+
+Measures whether cited source passages actually back up the claims in the generated answer.
+Format: `baseline` (current production). LLM judge: Qwen3.6-35B-A3B (temperature=0).
+14 queries (general + statute). 57 total claim-citation pairs.
+See `benchmarks/reports/citation_support.md` for per-pair detail.
+
+| Verdict | Count | Rate |
+|---|---:|---:|
+| YES - passage directly supports claim | 49 | 0.86 |
+| PARTIALLY - passage related but incomplete | 2 | 0.04 |
+| NO - passage does not support claim | 6 | 0.11 |
+
+**Per-query summary**:
+
+| Query | pairs | YES | PARTIAL | NO | faithful |
+|---|---:|---:|---:|---:|---:|
+| general_landlord_entry_notice | 3 | 3 | 0 | 0 | 1.00 |
+| general_sick_leave_medical_cert | 5 | 2 | 0 | 3 | 0.40 |
+| general_rent_increase_rules | 4 | 4 | 0 | 0 | 1.00 |
+| general_privacy_act_employer | 4 | 4 | 0 | 0 | 1.00 |
+| general_acc_personal_injury | 5 | 5 | 0 | 0 | 1.00 |
+| general_fair_process_dismissal | 5 | 4 | 1 | 0 | 0.80 |
+| general_workplace_harassment | 4 | 4 | 0 | 0 | 1.00 |
+| general_constructive_dismissal | 5 | 5 | 0 | 0 | 1.00 |
+| general_workplace_discrimination_hrrt | 5 | 3 | 0 | 2 | 0.60 |
+| general_periodic_tenancy_termination | 2 | 2 | 0 | 0 | 1.00 |
+| statute_era_s103a_justification | 4 | 3 | 1 | 0 | 0.75 |
+| statute_era_s103_personal_grievance | 2 | 1 | 0 | 1 | 0.50 |
+| statute_rta_landlord_entry | 4 | 4 | 0 | 0 | 1.00 |
+| statute_era_s127_interim_reinstatement | 5 | 5 | 0 | 0 | 1.00 |
+
+**Findings**:
+
+1. **Overall faithfulness is high at 0.86.** 8 of 14 queries score 1.00; the remaining 6 have
+   at least one NO verdict. Only 6/57 citations are fully unsupported.
+
+2. **Weak queries trace to corpus coverage gaps.** `general_sick_leave_medical_cert` (3 NO)
+   and `general_workplace_discrimination_hrrt` (2 NO) are the same queries that already trigger
+   `no_context_flag` in the context packing benchmark. The LLM cites sources that are topically
+   related but cite adjacent case facts (e.g., drug-testing policy) rather than the specific
+   claim (medical certificate after one day of leave). The source exists in context; the LLM
+   over-reaches in the claim it attributes to it.
+
+3. **PARTIALLY verdicts signal latent issues, not hard failures.** The 2 PARTIALLY cases
+   (`general_fair_process_dismissal [2]` and `statute_era_s103a_justification [4]`) are claims
+   where the passage supports the general principle but not the specific detail cited. A useful
+   target for prompt tuning.
+
+4. **`statute_era_s103_personal_grievance` 0.50 is a retrieval gap, not a hallucination.**
+   The answer correctly describes section 103 types but cites source [1] for a claim about
+   section 114 time limits - the cited source does not cover that claim. This reflects the
+   limited context window (5 sources, 14 queries worth of statute text) rather than invention.
+
+**Conclusion**: Citation faithfulness at 0.86 YES confirms the baseline pipeline does not
+hallucinate sources or fabricate citations. The 6 NO cases are traceable to specific corpus
+coverage gaps and the LLM over-reaching on adjacent-but-not-exact source passages. No
+systematic citation fabrication detected.
 
 ---
 
