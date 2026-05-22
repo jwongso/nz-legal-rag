@@ -1,8 +1,8 @@
 # NZ Legal RAG - Benchmark Results
 
-Benchmarks run on 2026-05-21 (initial) and 2026-05-22 (legal ranker). Source data:
-`benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
-and `benchmarks/reports/latest.json`.
+Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker), and 2026-05-22
+(tracker-first). Source data: `benchmarks/reports/comprehensive_report.md`,
+`benchmarks/reports/rerank_sweep.md`, and `benchmarks/reports/latest.json`.
 
 ---
 
@@ -129,6 +129,8 @@ Queries: 30. Gold dataset: `benchmarks/datasets/retrieval_gold.jsonl`.
 | sql_filter_vector_rerank (N=20) | 0.07 | 0.20 | 0.80 | 0.30 | 0.87 | 0.142 | 0.00 |
 | sql_filter_vector_legal | 0.10 | 0.23 | 1.00 | 0.27 | 1.00 | **0.154** | 0.00 |
 | sql_filter_vector_legal_rerank_5 | 0.10 | 0.23 | 0.93 | 0.23 | 0.93 | 0.118 | 0.00 |
+| sql_tracker_vector | 0.03 | 0.23 | 0.97 | 0.27 | 0.97 | 0.115 | 0.00 |
+| sql_tracker_vector_legal | 0.10 | 0.23 | 0.97 | 0.27 | 0.97 | 0.158 | 0.00 |
 
 **Current production pipeline: `sql_filter_vector_legal` (RERANK_MODE=off)**
 
@@ -241,6 +243,26 @@ but the cross-encoder at N=5 then picks the wrong one from those candidates.
 RERANK_MODE=off is the confirmed production default. The profile-aware legal
 ranker alone outperforms legal ranker + cross-encoder.
 
+### 4. Tracker-first retrieval ruled out as general pipeline
+
+`sql_tracker_vector` and `sql_tracker_vector_legal` JOIN sentencing_cases or
+employment_cases before vector search, restricting candidates to documents that
+have structured extraction data.
+
+Result: H@5(r) regression from 1.00 to 0.97. One query (`pg_employment_court_challenge_era`)
+dropped from H@5(r)=1 to 0 because its acceptable documents are procedural challenge
+decisions that are not in employment_cases (they carry no PG outcome data).
+
+Root cause of sentencing MRR=0 is NOT pool size. All 8 sentencing gold documents
+are confirmed in sentencing_cases. The problem is specificity: gold docs are
+recent specific decisions (2024-2026 NZCA) among 5,280 equally-semantically-similar
+sentencing docs. Vector search cannot distinguish which specific decision is the
+gold one when hundreds of others discuss the same sentencing methodology.
+
+Tracker-first is not adopted as production pipeline. Remains as an explicit
+structured-data query mode for the future planner (e.g., "find decisions where
+home detention was imposed" - field filter, not vector).
+
 ---
 
 ## Next Benchmarks
@@ -249,8 +271,11 @@ In priority order based on analysis:
 
 1. ~~Legal ranker impact~~ - done. MRR +37%, zero regressions. Locked as baseline.
 2. ~~Reranker candidate sweep and gated strategy~~ - done. RERANK_MODE=off confirmed.
-3. Hybrid BM25 + vector with RRF fusion - likely win for statute and exact-phrase queries
-4. Oracle filters vs. auto-planner filters - measures planner readiness for production
-5. Tracker-first route for sentencing and PG queries - structured SQL before vector
+3. ~~Tracker-first route for sentencing and PG queries~~ - done. H@5(r) regression.
+   Ruled out as general pipeline. Useful only for explicit structured-field queries.
+4. Hybrid BM25 + vector with RRF fusion - likely win for statute and exact-phrase queries.
+   Sentencing MRR=0 root cause: offence-name matching (aggravated robbery, manslaughter)
+   is a keyword problem, not a semantic problem. BM25 should surface exact offence matches.
+5. Oracle filters vs. auto-planner filters - measures planner readiness for production
 6. Context packing benchmark (chunk count, metadata headers, grouping)
 7. Citation support benchmark (citation_exists / in_context / supports_claim)

@@ -1,24 +1,28 @@
-"""Retrieval A/B benchmark: compares three retrieval pipelines on the gold dataset.
+"""Retrieval A/B benchmark: compares retrieval pipelines on the gold dataset.
 
 Pipelines compared:
-  vector_only              Pure Qdrant semantic search, no metadata filter
-  sql_filter_vector        PostgreSQL court+year filter (oracle) -> Qdrant within filtered set
-  sql_filter_vector_rerank sql_filter_vector + cross-encoder reranker
+  vector_only                Pure Qdrant semantic search, no metadata filter
+  sql_filter_vector          PostgreSQL court+year filter (oracle) -> Qdrant within filtered set
+  sql_filter_vector_rerank   sql_filter_vector + cross-encoder reranker
+  sql_filter_vector_legal    sql_filter_vector + intent-aware legal authority ranker
+  sql_filter_vector_legal_rerank_5  legal ranker + cross-encoder on top 5
+  sql_tracker_vector         tracker-first: JOIN sentencing/employment tables -> Qdrant
+  sql_tracker_vector_legal   tracker-first + intent-aware legal authority ranker
 
 "Oracle" filter means the expected_courts from the gold record are used as the
 filter, not extracted from query text. This isolates retrieval stack quality from
 planner quality. A separate planner benchmark will test filter extraction.
+
+Tracker-first pipelines route by task_type:
+  sentencing  -> JOIN sentencing_cases to restrict candidates to docs with extracted data
+  employment  -> JOIN employment_cases to restrict candidates to docs with extracted data
+  other       -> falls back to court-only filter (same as sql_filter_vector)
 
 Scoring (per query, per pipeline):
   hit_gold@K    1 if any expected_document appears in top-K, else 0
   hit_rel@K     1 if any expected_document OR acceptable_document appears in top-K
   mrr           1 / rank of first expected_document, 0 if none found
   irr@5         fraction of top-5 results from must_not_include_courts
-
-Both hit_gold and hit_rel are shown in the summary. Gold measures exact match on the
-canonical answer set. Rel measures whether any relevant answer was retrieved, including
-acceptable alternatives. sql_filter_vector achieving hit_rel@5=1.00 means it finds at
-least one topically relevant document in every query when an oracle court filter is used.
 
 Reports written to benchmarks/reports/:
   latest.json       full per-query, per-pipeline results
@@ -28,7 +32,7 @@ Reports written to benchmarks/reports/:
 Run:
     python -m benchmarks.runners.run_retrieval
     python -m benchmarks.runners.run_retrieval --quick
-    python -m benchmarks.runners.run_retrieval --pipelines vector_only sql_filter_vector
+    python -m benchmarks.runners.run_retrieval --pipelines sql_filter_vector sql_tracker_vector sql_tracker_vector_legal
 """
 
 import argparse
@@ -57,6 +61,8 @@ _ALL_PIPELINES = [
     "sql_filter_vector_rerank",
     "sql_filter_vector_legal",
     "sql_filter_vector_legal_rerank_5",
+    "sql_tracker_vector",
+    "sql_tracker_vector_legal",
 ]
 _HIT_K_VALUES = [1, 3, 5, 10, 20]
 _LEGAL_RERANK_CANDIDATES = 5
@@ -84,6 +90,58 @@ def _get_point_ids_for_courts(conn, courts: list[str],
             SELECT c.qdrant_point_id
             FROM chunks c
             JOIN documents d ON d.id = c.document_id
+            WHERE d.court = ANY(%s)
+              AND c.qdrant_point_id IS NOT NULL
+        """, (courts,))
+    return [r[0] for r in cur.fetchall()]
+
+
+def _get_point_ids_sentencing(conn, courts: list[str],
+                              years: list[int] | None) -> list[str]:
+    """Point IDs restricted to docs that have structured sentencing data extracted."""
+    cur = conn.cursor()
+    if years:
+        cur.execute("""
+            SELECT DISTINCT c.qdrant_point_id
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            JOIN sentencing_cases sc ON sc.document_id = d.id
+            WHERE d.court = ANY(%s)
+              AND EXTRACT(YEAR FROM d.decision_date) = ANY(%s)
+              AND c.qdrant_point_id IS NOT NULL
+        """, (courts, years))
+    else:
+        cur.execute("""
+            SELECT DISTINCT c.qdrant_point_id
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            JOIN sentencing_cases sc ON sc.document_id = d.id
+            WHERE d.court = ANY(%s)
+              AND c.qdrant_point_id IS NOT NULL
+        """, (courts,))
+    return [r[0] for r in cur.fetchall()]
+
+
+def _get_point_ids_employment(conn, courts: list[str],
+                              years: list[int] | None) -> list[str]:
+    """Point IDs restricted to docs that have structured employment case data extracted."""
+    cur = conn.cursor()
+    if years:
+        cur.execute("""
+            SELECT DISTINCT c.qdrant_point_id
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            JOIN employment_cases ec ON ec.document_id = d.id
+            WHERE d.court = ANY(%s)
+              AND EXTRACT(YEAR FROM d.decision_date) = ANY(%s)
+              AND c.qdrant_point_id IS NOT NULL
+        """, (courts, years))
+    else:
+        cur.execute("""
+            SELECT DISTINCT c.qdrant_point_id
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            JOIN employment_cases ec ON ec.document_id = d.id
             WHERE d.court = ANY(%s)
               AND c.qdrant_point_id IS NOT NULL
         """, (courts,))
@@ -214,6 +272,41 @@ async def _run_sql_filter_vector_legal_rerank_5(query: str, query_vec: list[floa
         if h.case_id not in seen:
             seen[h.case_id] = len(reranked) - i
     return sorted(seen, key=seen.__getitem__, reverse=True)
+
+
+def _tracker_point_ids(task_type: str, conn, courts: list[str],
+                       years: list[int] | None) -> list[str]:
+    if task_type == "sentencing":
+        return _get_point_ids_sentencing(conn, courts, years)
+    if task_type == "employment":
+        return _get_point_ids_employment(conn, courts, years)
+    return _get_point_ids_for_courts(conn, courts, years)
+
+
+async def _run_sql_tracker_vector(task_type: str, query_vec: list[float],
+                                   store: VectorStore, conn,
+                                   courts: list[str],
+                                   years: list[int] | None) -> list[str]:
+    point_ids = _tracker_point_ids(task_type, conn, courts, years)
+    if not point_ids:
+        return await _run_vector_only(query_vec, store)
+    hits = store.search_within(query_vec, point_ids, top_k=_FETCH_K)
+    return _dedup(hits)
+
+
+async def _run_sql_tracker_vector_legal(task_type: str, query: str,
+                                         query_vec: list[float],
+                                         store: VectorStore, conn,
+                                         courts: list[str],
+                                         years: list[int] | None) -> list[str]:
+    from rag.legal_ranker import QueryContext, rerank as legal_rerank
+    point_ids = _tracker_point_ids(task_type, conn, courts, years)
+    hits = store.search_within(query_vec, point_ids, top_k=_FETCH_K) \
+           if point_ids else store.search(query_vec, top_k=_FETCH_K)
+    deduped = _dedup_sr(hits)
+    ctx = QueryContext.from_query(query)
+    ordered = legal_rerank(deduped, ctx)
+    return [h.case_id for h in ordered]
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +525,20 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
             )
             scores["sql_filter_vector_legal_rerank_5"] = _score(ids, gold, court_lookup)
             top5["sql_filter_vector_legal_rerank_5"] = ids[:5]
+
+        if "sql_tracker_vector" in pipelines:
+            ids = await _run_sql_tracker_vector(
+                gold["task_type"], vec, store, conn, courts, years
+            )
+            scores["sql_tracker_vector"] = _score(ids, gold, court_lookup)
+            top5["sql_tracker_vector"] = ids[:5]
+
+        if "sql_tracker_vector_legal" in pipelines:
+            ids = await _run_sql_tracker_vector_legal(
+                gold["task_type"], q, vec, store, conn, courts, years
+            )
+            scores["sql_tracker_vector_legal"] = _score(ids, gold, court_lookup)
+            top5["sql_tracker_vector_legal"] = ids[:5]
 
         all_results.append({
             "id": gold["id"],
