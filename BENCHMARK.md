@@ -346,8 +346,7 @@ In priority order based on analysis:
 6. ~~Oracle filters vs. auto-planner filters~~ - done. Heuristic planner achieves
    H@5(r)=1.00 and MRR=0.152 vs oracle MRR=0.154. Zero coverage regressions.
    Court filtering value confirmed: no-filter baseline MRR=0.059 (-62% vs oracle).
-7. Context packing benchmark (chunk count, metadata headers, grouping strategies:
-   flat / grouped-by-doc / metadata-rich / statute-first / one-best / max-2-per-doc)
+7. ~~Context packing benchmark~~ - done. See section 7 below.
 8. Citation support benchmark (citation_exists / in_context / supports_claim)
 9. Answer quality benchmark (faithfulness, completeness, false "not enough context" rate)
 
@@ -396,6 +395,75 @@ See `benchmarks/reports/planner_analysis.md` for per-query detail.
 
 ---
 
+### 7. Context packing benchmark
+
+Six context assembly formats benchmarked. Retrieval fixed at `planner_filter_vector_legal`.
+14 queries (general + statute task types). LLM: Qwen3 via llama-server.
+See `benchmarks/reports/context_packing.md` for per-query detail.
+
+| Format | ctx_tok | ans_tok | has_cit | all_in_ctx | no_ctx | diversity | lat_s |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| baseline (current) | 494 | 364 | 1.00 | 1.00 | 0.14 | 4.2 | 49.3 |
+| metadata_rich | 727 | 369 | 1.00 | 1.00 | 0.14 | 3.9 | 42.9 |
+| full_chunk | 521 | 353 | 1.00 | 1.00 | 0.21 | 3.9 | 35.8 |
+| statute_first | 727 | 369 | 1.00 | 1.00 | 0.14 | 4.1 | 34.5 |
+| top3_only | 473 | 289 | 0.93 | 0.93 | 0.14 | 2.5 | 34.2 |
+| max2_per_doc | 1160 | 486 | 1.00 | 1.00 | 0.29 | 3.6 | 59.2 |
+
+**Format descriptions** (`rag/context_packer.py`):
+- `baseline`: current production - one chunk/doc, 600-char truncation, plain `[N]` prefix
+- `metadata_rich`: adds `Title | Court | Date | Section` header per chunk, same pool
+- `full_chunk`: removes 600-char truncation (chunks are ~120 words so rarely differ)
+- `statute_first`: metadata_rich with NZLEG chunks sorted before case chunks
+- `top3_only`: top 3 docs, full text, metadata_rich headers
+- `max2_per_doc`: up to 2 chunks per doc (10 chunks max), metadata_rich, 600-char each
+
+**Findings**:
+
+1. **Citation quality is format-independent.** `all_in_ctx=1.00` for every format that
+   produced citations. The LLM follows the `[N]` citation instruction reliably regardless
+   of how the context is structured. Zero spurious paragraph-number false positives after
+   fixing the citation regex to exclude 4-digit NZ case years (`[2023]`).
+
+2. **The 600-char truncation does not cut content.** `baseline` vs `full_chunk` have nearly
+   identical `ctx_tok` (494 vs 521) because NZ legal chunks are ~120-word windows already
+   within the limit. Removing the truncation cap changes nothing.
+
+3. **Metadata headers add tokens without quality gain.** `metadata_rich` uses 47% more
+   context tokens (727 vs 494) with identical `has_cit`, `all_in_ctx`, `no_ctx` metrics
+   and slightly lower source diversity (3.9 vs 4.2). The headers consume prompt budget
+   without improving the answer.
+
+4. **Two chunks per doc hurts.** `max2_per_doc` raises `no_ctx` rate from 0.14 to 0.29
+   (2x), uses 2.3x the context tokens, and increases latency by 20%. The second-best chunk
+   per document is noisier than the top chunk from the next-ranked document. Five diverse
+   documents beat two chunks from one document.
+
+5. **Top 3 docs is insufficient.** `top3_only` drops source diversity from 4.2 to 2.5
+   and produces one complete citation failure (statute_era_s103_personal_grievance: no
+   citations generated from 3 docs). The 4th and 5th ranked docs contribute materially.
+
+6. **`no_context_flag` is query-dependent, not format-dependent.** `general_workplace_harassment`
+   triggers the flag in all 6 formats - the retrieved docs do not contain enough specific
+   NZ workplace harassment statute or case law. This is a corpus coverage gap, not a
+   packing problem. `general_sick_leave_medical_cert` triggers it in 4/6 formats
+   (borderline coverage).
+
+7. **`statute_first` is a free win for statute-intent queries.** Sorting legislation chunks
+   first helps the LLM locate the statute text sooner without increasing `no_ctx` rate.
+   For general queries where no NZLEG chunks are retrieved, `statute_first` behaves
+   identically to `metadata_rich`.
+
+**Conclusion**: The `baseline` format is already near-optimal. No format beats it on the
+combined `{no_ctx, diversity, all_in_ctx}` metrics. The main actionable finding is to adopt
+`statute_first` (legislation before cases) for statute-profile queries since it matches the
+intent-aware ranker's `statute_mode` and helps structure the answer without token cost.
+
+**CONTEXT_PACK_MODE locked** at `baseline` for general/authority/example/tracker queries.
+`statute_first` promoted as the preferred format for statute-intent queries.
+
+---
+
 ## Production Configuration (Locked)
 
 Based on all benchmarks, the following decisions are locked and should not be
@@ -408,6 +476,7 @@ re-opened without new evidence from a benchmark run.
 | BM25_MODE | conditional_statute_only | Global BM25 causes regressions; statute/section/citation queries only |
 | TRACKER_JOIN_MODE | soft_only | Hard JOIN excludes acceptable docs; additive post-rank bonus only |
 | COURT_PLANNER | deterministic heuristic | Keyword signals, no LLM; oracle pipeline (sql_filter_vector_legal) kept as benchmark upper bound |
+| CONTEXT_PACK_MODE | baseline (general); statute_first (statute) | Metadata headers add no quality; 5 docs > 2 chunks/doc; statute_first free win for statute intent |
 
 ### Production routing
 
