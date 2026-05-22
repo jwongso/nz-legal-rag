@@ -1,7 +1,8 @@
 # NZ Legal RAG - Benchmark Results
 
 Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker + tracker-first),
-2026-05-22 (BM25 hybrid), 2026-05-22 (gold dataset revision), and 2026-05-23 (citation support).
+2026-05-22 (BM25 hybrid), 2026-05-22 (gold dataset revision), 2026-05-23 (citation support),
+and 2026-05-23 (answer quality).
 Source data:
 `benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
 and `benchmarks/reports/latest.json`.
@@ -350,7 +351,8 @@ In priority order based on analysis:
 7. ~~Context packing benchmark~~ - done. See section 7 below.
 8. ~~Citation support benchmark (citation_exists / in_context / supports_claim)~~ - done.
    See section 8 below.
-9. Answer quality benchmark (faithfulness, completeness, false "not enough context" rate)
+9. ~~Answer quality benchmark (faithfulness, completeness, false "not enough context" rate)~~ - done.
+   See section 9 below.
 
 Retrieval baseline for answer-construction benchmarks:
   Pipeline: planner_filter_vector_legal
@@ -524,6 +526,73 @@ See `benchmarks/reports/citation_support.md` for per-pair detail.
 hallucinate sources or fabricate citations. The 6 NO cases are traceable to specific corpus
 coverage gaps and the LLM over-reaching on adjacent-but-not-exact source passages. No
 systematic citation fabrication detected.
+
+---
+
+### 9. Answer quality benchmark
+
+Evaluates the baseline answers holistically on two dimensions.
+LLM judge: Qwen3.6-35B-A3B (temperature=0). 14 queries (general + statute).
+See `benchmarks/reports/answer_quality.md` for per-query detail.
+
+| Dimension | Mean (1-5) | 5 | 4 | 3 | 2 | 1 |
+|---|---:|---:|---:|---:|---:|---:|
+| Faithfulness | 5.00 | 14 | 0 | 0 | 0 | 0 |
+| Completeness | 3.21 | 4 | 2 | 3 | 3 | 2 |
+
+**No-context flag accuracy**: 2 queries said "not enough context" in baseline.
+Both were verified as justified (0 false claims of insufficient context).
+
+**Per-query completeness**:
+
+| Query | Complete | Gaps summary |
+|---|---:|---|
+| general_landlord_entry_notice | 3 | Missing specific notice duration (48h or 4 clear days) |
+| general_sick_leave_medical_cert | 3 | Missing general ERA principle on medical cert requests |
+| general_rent_increase_rules | 4 | Minor: notice must specify amount |
+| general_privacy_act_employer | 1 | Core PA2020 IPPs not covered; context had only adjacent case law |
+| general_acc_personal_injury | 3 | Missing s20(2) injury type list (physical injury, treatment injury, etc.) |
+| general_fair_process_dismissal | 5 | - |
+| general_workplace_harassment | 2 | Missing remedies; context gap, not answer failure |
+| general_constructive_dismissal | 5 | - |
+| general_workplace_discrimination_hrrt | 2 | Answers general HRA provisions, not workplace-specific application |
+| general_periodic_tenancy_termination | 2 | Missing 63-day notice period; judge knew statute, context did not have it |
+| statute_era_s103a_justification | 5 | - |
+| statute_era_s103_personal_grievance | 1 | Only one PG type listed; 7 more in ERA s103 not in retrieved context |
+| statute_rta_landlord_entry | 4 | Omits 21-day notice period for specific entry types |
+| statute_era_s127_interim_reinstatement | 5 | - |
+
+**Findings**:
+
+1. **Faithfulness is perfect (5.00/5).** All 14 answers score 5/5 - zero hallucinations,
+   zero fabricated legal rules, zero invented case names or statute sections. Every claim
+   in the baseline answers is directly traceable to the provided sources.
+
+2. **Completeness is moderate (3.21/5) and corpus-limited.** The 4 queries scoring 5/5
+   (fair process, constructive dismissal, s103A, s127) happen to have rich, relevant corpus
+   coverage. The 2 queries scoring 1/5 (privacy_act_employer, era_s103_personal_grievance)
+   have corpus gaps: the Privacy Act collection obligations appear in only one tangential
+   chunk; s103 PG types beyond unjustified dismissal are under-represented in ERA decisions.
+   The issue is retrieval pool depth, not answer construction.
+
+3. **No-context claims are accurate (100%).** Both queries that said "not enough context"
+   (general_sick_leave_medical_cert and general_workplace_harassment) were verified by the
+   judge as legitimately lacking context. The model is not over-claiming insufficiency.
+
+4. **Employment law answers are highest quality.** The four 5/5 completeness queries are all
+   ERA/employment topics with dense, well-structured tribunal decisions in the corpus.
+   Tenancy and statute queries score lower because the relevant statute text (RTA s48, ERA
+   s103) is either at the edge of the retrieval window or not returned by the planner.
+
+5. **HRRT and harassment queries reflect scope mismatch.** The Human Rights Act query
+   (complete=2) returns general HRA provisions rather than workplace-specific case law.
+   The workplace harassment query (complete=2) returns bullying definitions with no remedies.
+   Both point to the same corpus gap flagged in the context packing benchmark.
+
+**Conclusion**: The baseline pipeline does not hallucinate. Completeness gaps are caused
+by corpus coverage limitations and retrieval scope, not by the context assembly or generator.
+The next improvement lever is corpus expansion (more RTA, Privacy Act, HRRT decisions)
+and query-time corpus routing (detect statute-heavy queries and boost NZLEG/NZHRRT).
 
 ---
 
