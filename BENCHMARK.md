@@ -137,8 +137,8 @@ Queries: 30. Gold dataset: `benchmarks/datasets/retrieval_gold.jsonl`.
 | planner_filter_vector_legal | 0.10 | 0.23 | 1.00 | 0.23 | 1.00 | **0.152** | 0.00 |
 | no_filter_vector_legal | 0.07 | 0.07 | 0.40 | 0.07 | 0.60 | 0.059 | 0.00 |
 
-**Current production pipeline: `sql_filter_vector_legal` (RERANK_MODE=off)**
-**Planner pipeline: `planner_filter_vector_legal` - production-ready, MRR within 1% of oracle**
+**Production pipeline: `planner_filter_vector_legal` (RERANK_MODE=off)**
+**Oracle upper bound: `sql_filter_vector_legal` - benchmark reference only, not deployed**
 
 ### Per task type
 
@@ -339,8 +339,16 @@ In priority order based on analysis:
 6. ~~Oracle filters vs. auto-planner filters~~ - done. Heuristic planner achieves
    H@5(r)=1.00 and MRR=0.152 vs oracle MRR=0.154. Zero coverage regressions.
    Court filtering value confirmed: no-filter baseline MRR=0.059 (-62% vs oracle).
-7. Context packing benchmark (chunk count, metadata headers, grouping)
+7. Context packing benchmark (chunk count, metadata headers, grouping strategies:
+   flat / grouped-by-doc / metadata-rich / statute-first / one-best / max-2-per-doc)
 8. Citation support benchmark (citation_exists / in_context / supports_claim)
+9. Answer quality benchmark (faithfulness, completeness, false "not enough context" rate)
+
+Retrieval baseline for answer-construction benchmarks:
+  Pipeline: planner_filter_vector_legal
+  H@5(r)=1.00, MRR=0.152
+  The retrieval bottleneck is solved. Next bottleneck: did we package and use the
+  retrieved context correctly for the generator?
 
 ### 6. Oracle vs heuristic court planner
 
@@ -385,21 +393,21 @@ re-opened without new evidence from a benchmark run.
 
 | Decision | Value | Rationale |
 |---|---|---|
-| DEFAULT_PIPELINE | sql_filter_vector_legal | Pareto-optimal: H@5(r)=1.00, MRR=0.154, zero regressions |
+| DEFAULT_PIPELINE | planner_filter_vector_legal | Heuristic planner reaches oracle-equivalent H@5(r)=1.00, MRR=0.152 (-1.3%) with no LLM call |
 | RERANK_MODE | off | Legal ranker alone outperforms legal ranker + cross-encoder |
-| BM25_MODE | conditional_only | Global BM25 causes regressions; conditional BM25 is safe |
-| TRACKER_JOIN_MODE | never_as_default_gate | Hard JOIN excludes acceptable docs (H@5(r) regression) |
-| TRACKER_BOOST_MODE | soft_only | Additive post-rank bonus; no exclusion of untracked docs |
+| BM25_MODE | conditional_statute_only | Global BM25 causes regressions; statute/section/citation queries only |
+| TRACKER_JOIN_MODE | soft_only | Hard JOIN excludes acceptable docs; additive post-rank bonus only |
+| COURT_PLANNER | deterministic heuristic | Keyword signals, no LLM; oracle pipeline (sql_filter_vector_legal) kept as benchmark upper bound |
 
 ### Production routing
 
 | Intent | Pipeline | Notes |
 |---|---|---|
-| authority | sql_filter_vector_legal | Default legal ranker profile |
-| example | sql_filter_vector_legal | Example profile in legal ranker |
-| tracker | sql_filter_vector_legal | Tracker profile + soft boost (no hard JOIN) |
-| statute | sql_filter_vector_legal + conditional BM25 | BM25 activated for section refs, citations, quoted phrases |
-| default | sql_filter_vector_legal | Fallback for all unclassified intents |
+| authority | planner_filter_vector_legal | Default legal ranker profile |
+| example | planner_filter_vector_legal | Example profile in legal ranker |
+| tracker | planner_filter_vector_legal | Tracker profile + soft boost (no hard JOIN) |
+| statute | planner_filter_vector_legal + conditional BM25 | BM25 activated for section refs, citations, quoted phrases |
+| default | planner_filter_vector_legal | Fallback for all unclassified intents |
 
 ### Conditional BM25 activation rules (rag/bm25_query.py)
 

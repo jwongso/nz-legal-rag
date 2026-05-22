@@ -44,13 +44,15 @@ leaves the machine.
                     +-----------v-------------------v-----------+
                     |    RAG Pipeline (rag/pipeline.py)         |
                     |  1. embed query                           |
-                    |  2. SQL pre-filter (FilterParams) [opt]  |
-                    |  3. Qdrant semantic search               |
-                    |  4. deduplicate (one chunk per case)     |
-                    |  5. legal authority ranker (intent-aware)|
-                    |  6. cross-encoder rerank [opt]           |
-                    |  7. generate answer via LLM             |
-                    |  8. verify citations (no LLM call)      |
+                    |  2. court planner: domain signals -> SQL |
+                    |     filter (no LLM call)                |
+                    |  3. SQL pre-filter (court + year)        |
+                    |  4. Qdrant semantic search within filter |
+                    |  5. deduplicate (one chunk per case)     |
+                    |  6. legal authority ranker (intent-aware)|
+                    |  7. conditional BM25 + RRF [statute only]|
+                    |  8. generate answer via LLM             |
+                    |  9. verify citations (no LLM call)      |
                     +-----------+-----------+-----------+-------+
                                 |           |           |
           +---------------------+     +-----v------+   |
@@ -287,6 +289,46 @@ questions. PostgreSQL-filtered vector search with a profile-aware legal ranker r
 Pareto-optimal, achieving 100% relevant Hit@5 and the best production-safe MRR. BM25
 is therefore reserved for targeted statute, section, citation, and rare-phrase queries
 rather than used as a global hybrid retrieval signal.
+
+The production pipeline is `planner_filter_vector_legal`. The oracle pipeline
+(`sql_filter_vector_legal`) is retained as a benchmark upper bound only.
+
+---
+
+### Court planner design decisions
+
+Four non-obvious lessons emerged from benchmarking the heuristic court planner against
+oracle filters on 30 gold queries (`benchmarks/datasets/retrieval_gold.jsonl`):
+
+**1. Employment queries route to NZERA by default; NZEmpC is added only when
+the query explicitly mentions "Employment Court".**
+General employment signals ("dismissal", "redundancy", "employer") almost always
+target ERA decisions. Adding NZEmpC to every employment query dilutes the NZERA
+result pool and causes ranking regressions on NZERA-specific gold documents.
+NZEmpC is appended to the filter only when the query contains "Employment Court"
+or "NZEmpC" as an explicit court reference.
+
+**2. Privacy Act and Human Rights Act queries route to NZHRRT, not legislation.**
+"Privacy Act" and "Human Rights Act" are NZHRRT signals, not triggers for generic
+legislation retrieval. Routing them to NZLEG inflated the candidate pool with statute
+chunks and caused ranking regressions on queries seeking court decisions rather than
+statute text. The two Acts remain excluded from the `_LEGISLATION` signal group.
+
+**3. Year extraction applies only to temporal phrases, not Act names.**
+"in 2023" and "2024 decisions" correctly extract year=2023/2024. "Privacy Act 2020"
+and "Employment Relations Act 2000" do not - Act-name years are not decision-date
+filters. A naive year regex would restrict "Privacy Act 2020" queries to 2020
+decisions, excluding all recent case law. The regex requires a temporal preposition
+("in", "from", "during", "of") or a decision-noun suffix ("decisions", "cases").
+
+**4. Planner quality is evaluated using four court-match categories.**
+- exact: planner courts == oracle courts (18/30 gold queries)
+- superset: planner includes all oracle courts plus extras - safe, larger pool (7/30)
+- subset: planner misses some oracle courts - coverage risk, but zero MRR loss (5/30)
+- disjoint: no overlap with oracle - hard regression (0/30)
+
+Result: H@5(r)=1.00, MRR=0.152 vs oracle MRR=0.154 (-1.3%). No LLM required
+for court routing. See `rag/court_planner.py` and `BENCHMARK.md` section 6.
 
 ---
 
@@ -627,7 +669,7 @@ via SYCL/oneAPI. Planned as 24/7 always-on inference node running Gentoo Linux.
 - [x] MCP server for Claude Code / Claude Desktop
 - [x] FastAPI REST interface with web chat UI
 - [x] RAGAS evaluation harness with NZ legal Q&A benchmark
-- [x] Cross-encoder reranker (bge-reranker-v2-m3, CPU)
+- [x] Cross-encoder reranker (bge-reranker-v2-m3, CPU) - benchmarked and ruled out (RERANK_MODE=off)
 - [x] Case deduplication in retrieval
 - [x] Flag system (19 categories, regex-based)
 - [x] Penalty extraction: criminal OSI scale + civil awarded amount + recovery rate
@@ -644,6 +686,10 @@ via SYCL/oneAPI. Planned as 24/7 always-on inference node running Gentoo Linux.
 - [x] Automated test suite: 114 tests covering API, retrieval, quality, and latency
 - [x] Similar Cases With Opposite Outcomes (`POST /contrasting-cases`) - contrastive semantic retrieval split by structured outcome (Phase 4)
 - [x] LLM extraction backfill pipeline (`ingest/llm_extract_pipeline.py`) - fills structured fields the regex pipelines miss (compensation, reinstatement, aggravating/mitigating factors)
+- [x] Intent-aware legal ranker (`rag/legal_ranker.py`) - four profiles (authority, example, tracker, statute), MRR +37% vs unranked baseline
+- [x] Heuristic court planner (`rag/court_planner.py`) - domain signals to court/year filter with no LLM call, oracle-equivalent H@5(r)=1.00
+- [x] Conditional BM25 (`rag/bm25_query.py`) - statute/section/citation queries only, OR-joined anchors, RRF-fused
+- [x] 30-query retrieval benchmark suite with gold dataset, planner analysis, and locked production config
 
 ### Near-term (current hardware)
 
