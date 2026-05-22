@@ -160,11 +160,19 @@ def _bm25_hits(conn, query: str, courts: list[str],
                years: list[int] | None, limit: int = _FETCH_K) -> list:
     """BM25 via PostgreSQL tsvector (GIN index). Returns list[SearchResult], deduped by case_id.
 
+    Conditional: suppresses BM25 for broad natural language questions (via build_bm25_query).
+    When activated, passes extracted OR-joined key terms rather than the full question.
     Uses websearch_to_tsquery (phrase-aware) and ts_rank_cd (cover density).
-    Payload is minimal (court, chunk_index, year, document_type from PG; no citations/legal_area).
-    Falls back to empty list if no FTS matches.
+    Returns empty list if BM25 is suppressed or no FTS matches.
     """
+    from rag.bm25_query import build_bm25_query
     from rag.retriever import SearchResult
+
+    bm25_q = build_bm25_query(query)
+    if not bm25_q.should_use:
+        return []
+
+    fts_query = bm25_q.query_terms  # OR-joined anchors, safe for websearch_to_tsquery
 
     cur = conn.cursor()
     year_clause = "AND EXTRACT(YEAR FROM d.decision_date) = ANY(%s)" if years else ""
@@ -187,7 +195,7 @@ def _bm25_hits(conn, query: str, courts: list[str],
               {year_clause}
             ORDER BY rank DESC
             LIMIT %s
-        """, [query, courts] + year_args + [_BM25_CHUNK_LIMIT])
+        """, [fts_query, courts] + year_args + [_BM25_CHUNK_LIMIT])
     except Exception:
         return []
 
@@ -440,7 +448,9 @@ async def _run_sql_filter_bm25_vector_rrf_legal(query: str, query_vec: list[floa
     raw_vec = store.search_within(query_vec, point_ids, top_k=_FETCH_K) \
               if point_ids else store.search(query_vec, top_k=_FETCH_K)
     vec = _dedup_sr(raw_vec)
-    fused = _rrf_merge(bm25, vec)
+    # RRF only when BM25 returned hits; otherwise fall through to pure vector
+    # to avoid replacing cosine similarity scores with near-zero RRF scores.
+    fused = _rrf_merge(bm25, vec) if bm25 else vec
     ctx = QueryContext.from_query(query)
     ordered = legal_rerank(fused, ctx)
     return [h.case_id for h in ordered]
@@ -456,7 +466,7 @@ async def _run_sql_filter_bm25_vector_rrf_legal_plus_tracker_soft_boost(
     raw_vec = store.search_within(query_vec, point_ids, top_k=_FETCH_K) \
               if point_ids else store.search(query_vec, top_k=_FETCH_K)
     vec = _dedup_sr(raw_vec)
-    fused = _rrf_merge(bm25, vec)
+    fused = _rrf_merge(bm25, vec) if bm25 else vec
     ctx = QueryContext.from_query(query)
     ordered = legal_rerank(fused, ctx)
     boosted = _apply_tracker_soft_boost(ordered, task_type, conn)

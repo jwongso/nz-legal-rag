@@ -338,3 +338,42 @@ In priority order based on analysis:
 7. Oracle filters vs. auto-planner filters - measures planner readiness for production
 8. Context packing benchmark (chunk count, metadata headers, grouping)
 9. Citation support benchmark (citation_exists / in_context / supports_claim)
+
+---
+
+## Production Configuration (Locked)
+
+Based on all benchmarks, the following decisions are locked and should not be
+re-opened without new evidence from a benchmark run.
+
+| Decision | Value | Rationale |
+|---|---|---|
+| DEFAULT_PIPELINE | sql_filter_vector_legal | Pareto-optimal: H@5(r)=1.00, MRR=0.154, zero regressions |
+| RERANK_MODE | off | Legal ranker alone outperforms legal ranker + cross-encoder |
+| BM25_MODE | conditional_only | Global BM25 causes regressions; conditional BM25 is safe |
+| TRACKER_JOIN_MODE | never_as_default_gate | Hard JOIN excludes acceptable docs (H@5(r) regression) |
+| TRACKER_BOOST_MODE | soft_only | Additive post-rank bonus; no exclusion of untracked docs |
+
+### Production routing
+
+| Intent | Pipeline | Notes |
+|---|---|---|
+| authority | sql_filter_vector_legal | Default legal ranker profile |
+| example | sql_filter_vector_legal | Example profile in legal ranker |
+| tracker | sql_filter_vector_legal | Tracker profile + soft boost (no hard JOIN) |
+| statute | sql_filter_vector_legal + conditional BM25 | BM25 activated for section refs, citations, quoted phrases |
+| default | sql_filter_vector_legal | Fallback for all unclassified intents |
+
+### Conditional BM25 activation rules (rag/bm25_query.py)
+
+BM25 is activated when any one of the following is present in the query:
+
+1. Section reference: s103A, section 103A, s 127
+2. Case citation: NZCA/2024/50, [2024] NZCA 50
+3. Quoted phrase: "interim reinstatement"
+4. Short keyword query: <= 6 tokens, no question words, no trailing "?"
+
+When activated, OR-joined anchors extracted from the query are passed to
+`websearch_to_tsquery`, not the full question string, so FTS does not apply strict
+AND-matching over all stems. When BM25 returns empty (suppressed or no FTS match),
+RRF is skipped entirely and vector cosine scores are used directly.

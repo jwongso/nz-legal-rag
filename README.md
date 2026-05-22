@@ -255,16 +255,38 @@ pipeline.ask("robbery aggravated factors", sql_filter=params)
 
 The pre-filter is capped at 5,000 point IDs to keep Qdrant latency bounded.
 
-### 3. BM25 keyword search
+### 3. Conditional BM25 (statute and exact-reference queries only)
 
-Full-text search via PostgreSQL `tsvector`/GIN index. Useful for exact phrase lookup
-or when semantic search returns too many thematically similar but textually different
-results.
+Full-text search via PostgreSQL `tsvector`/GIN index. Activated automatically only
+when the query contains a section reference (`s103A`, `section 127`), a case citation
+(`[2024] NZCA 50`), a quoted phrase, or is a short keyword query (<= 6 words, no
+question words). For all other queries BM25 is suppressed.
+
+When active, OR-joined anchors extracted from the query are passed to
+`websearch_to_tsquery` - not the full question. This avoids the AND-strictness
+problem where a 15-word question requires all stems to co-occur in one 512-token chunk.
+BM25 results are fused with vector results via RRF (k=60). If BM25 returns empty,
+RRF is skipped and vector scores are used directly.
 
 ```python
-from db.filter import bm25_search
-results = bm25_search("unjustified dismissal reinstatement", courts=["NZERA"], limit=10)
+from rag.bm25_query import build_bm25_query
+q = build_bm25_query("section 103A Employment Relations Act")
+# q.should_use = True, q.query_terms = '"section 103A" OR "Employment Relations Act"'
 ```
+
+Benchmarked result: global BM25 hybrid caused 6 coverage regressions vs vector-only
+baseline. Conditional BM25 (this design) shows zero regressions and adds BM25 signal
+only where exact matching is reliable. See `BENCHMARK.md` for full results.
+
+---
+
+### Retrieval design summary
+
+The benchmark showed that general BM25 hybrid retrieval was harmful for broad legal
+questions. PostgreSQL-filtered vector search with a profile-aware legal ranker remained
+Pareto-optimal, achieving 100% relevant Hit@5 and the best production-safe MRR. BM25
+is therefore reserved for targeted statute, section, citation, and rare-phrase queries
+rather than used as a global hybrid retrieval signal.
 
 ---
 
