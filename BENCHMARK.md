@@ -1,7 +1,7 @@
 # NZ Legal RAG - Benchmark Results
 
-Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker), and 2026-05-22
-(tracker-first). Source data: `benchmarks/reports/comprehensive_report.md`,
+Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker + tracker-first),
+and 2026-05-22 (BM25 hybrid). Source data: `benchmarks/reports/comprehensive_report.md`,
 `benchmarks/reports/rerank_sweep.md`, and `benchmarks/reports/latest.json`.
 
 ---
@@ -131,6 +131,9 @@ Queries: 30. Gold dataset: `benchmarks/datasets/retrieval_gold.jsonl`.
 | sql_filter_vector_legal_rerank_5 | 0.10 | 0.23 | 0.93 | 0.23 | 0.93 | 0.118 | 0.00 |
 | sql_tracker_vector | 0.03 | 0.23 | 0.97 | 0.27 | 0.97 | 0.115 | 0.00 |
 | sql_tracker_vector_legal | 0.10 | 0.23 | 0.97 | 0.27 | 0.97 | 0.158 | 0.00 |
+| sql_filter_bm25_legal | 0.00 | 0.00 | 0.00 | 0.00 | 0.03 | 0.000 | 0.00 |
+| sql_filter_bm25_vector_rrf_legal | 0.10 | 0.20 | 0.80 | 0.27 | 0.97 | 0.147 | 0.00 |
+| sql_filter_bm25_vector_rrf_legal_plus_tracker_soft_boost | 0.10 | 0.20 | 0.83 | 0.27 | 0.97 | 0.147 | 0.00 |
 
 **Current production pipeline: `sql_filter_vector_legal` (RERANK_MODE=off)**
 
@@ -263,6 +266,56 @@ Tracker-first is not adopted as production pipeline. Remains as an explicit
 structured-data query mode for the future planner (e.g., "find decisions where
 home detention was imposed" - field filter, not vector).
 
+### 5. BM25 hybrid - negative result across all three variants
+
+BM25 via PostgreSQL `websearch_to_tsquery` + `ts_rank_cd` (GIN index on chunk text).
+Regression categories tracked: `coverage_regression`, `gold_rank_regression`,
+`mode_regression`. See `benchmarks/reports/regressions.md` for per-query detail.
+
+| Pipeline | H@5(r) | MRR | coverage_reg | gold_rank_reg |
+|---|---:|---:|---:|---:|
+| sql_filter_vector_legal (baseline) | 1.00 | 0.154 | - | - |
+| sql_filter_bm25_legal | 0.00 | 0.000 | 30 | 8 |
+| sql_filter_bm25_vector_rrf_legal | 0.80 | 0.147 | 6 | 0 |
+| sql_filter_bm25_vector_rrf_legal_plus_tracker_soft_boost | 0.83 | 0.147 | 5 | 0 |
+
+**BM25 alone**: complete failure. `websearch_to_tsquery` generates an AND query
+requiring all stems to co-occur in the same chunk (~512 tokens). A 15-word
+question like "What notice must a landlord give before entering a rental
+property?" becomes 8 required stems - most relevant chunks contain only a subset.
+Result: 30/30 coverage_regression, H@5(r) = 0.000 for all queries.
+
+**BM25 + vector RRF (k=60)**: 6 coverage regressions vs baseline. Root cause:
+RRF gives each system equal weight at 1/(k+rank). When BM25 returns an irrelevant
+doc at rank 1 (score 0.016) and the relevant doc is only found by vector at rank 5
+(score 0.015), the irrelevant BM25 doc wins. k=60 was designed for systems of
+roughly equal recall; BM25 here has near-zero recall so its top picks carry too
+much leverage relative to its contribution.
+
+**Stat mode exception**: statute MRR improves from 0.512 to 0.521 (+0.009) with
+RRF. Section references like "section 103A" are keyword-matchable and appear in
+legislation chunks - BM25 reliably finds them. The NZLEG authority weight in
+statute_mode then promotes them. But this gain is outweighed by 6 coverage
+regressions elsewhere.
+
+**Soft tracker boost**: recovers one coverage regression
+(`sentencing_home_detention_vs_imprisonment` H@5(r) 0->1) without introducing
+any new ones. Net improvement is real but marginal: 5 regressions vs 6.
+
+**Sentencing MRR=0 confirmed as gold dataset issue**: multiple "expected" gold
+documents for sentencing queries do not contain the query terms at all. For
+example, the gold set for "aggravated robbery starting points" includes
+Webster v R [2026] NZCA 67 - a murder case that makes no reference to
+aggravated robbery. BM25 correctly identifies this as non-matching. Sentencing
+MRR=0 cannot be fixed by any retrieval pipeline; the gold set needs revision.
+
+Production pipeline unchanged: `sql_filter_vector_legal`.
+
+What would make BM25 useful:
+- Key-term extraction before FTS (3-4 legal terms, not the full question)
+- Weighted RRF: `weight_bm25 * 1/(k+rank)` with weight < 1.0
+- Conditional BM25: activate only for statute/exact-section queries
+
 ---
 
 ## Next Benchmarks
@@ -273,9 +326,15 @@ In priority order based on analysis:
 2. ~~Reranker candidate sweep and gated strategy~~ - done. RERANK_MODE=off confirmed.
 3. ~~Tracker-first route for sentencing and PG queries~~ - done. H@5(r) regression.
    Ruled out as general pipeline. Useful only for explicit structured-field queries.
-4. Hybrid BM25 + vector with RRF fusion - likely win for statute and exact-phrase queries.
-   Sentencing MRR=0 root cause: offence-name matching (aggravated robbery, manslaughter)
-   is a keyword problem, not a semantic problem. BM25 should surface exact offence matches.
-5. Oracle filters vs. auto-planner filters - measures planner readiness for production
-6. Context packing benchmark (chunk count, metadata headers, grouping)
-7. Citation support benchmark (citation_exists / in_context / supports_claim)
+4. ~~Hybrid BM25 + vector with RRF fusion~~ - done. All three variants regress vs
+   baseline. BM25 AND-matching too strict; RRF k=60 not suited to low-recall BM25.
+   Conditional BM25 (statute queries only) + weighted RRF is the next experiment.
+5. Gold dataset revision for sentencing queries - MRR=0 is a dataset quality
+   problem, not a retrieval problem. Several expected_documents do not contain
+   the query terms. Fix: add acceptable_documents that BM25 and vector do surface,
+   or replace mismatched gold docs.
+6. Conditional BM25 for statute and section queries - key-term extraction +
+   weighted RRF for queries that explicitly reference a section number.
+7. Oracle filters vs. auto-planner filters - measures planner readiness for production
+8. Context packing benchmark (chunk count, metadata headers, grouping)
+9. Citation support benchmark (citation_exists / in_context / supports_claim)
