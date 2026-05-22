@@ -32,6 +32,7 @@ Reports written to benchmarks/reports/:
 Run:
     python -m benchmarks.runners.run_retrieval
     python -m benchmarks.runners.run_retrieval --quick
+    python -m benchmarks.runners.run_retrieval --pipelines sql_filter_vector_legal planner_filter_vector_legal no_filter_vector_legal
     python -m benchmarks.runners.run_retrieval --pipelines sql_filter_vector sql_tracker_vector sql_tracker_vector_legal
 """
 
@@ -69,6 +70,8 @@ _ALL_PIPELINES = [
     "sql_filter_bm25_legal",
     "sql_filter_bm25_vector_rrf_legal",
     "sql_filter_bm25_vector_rrf_legal_plus_tracker_soft_boost",
+    "planner_filter_vector_legal",
+    "no_filter_vector_legal",
 ]
 
 _BASELINE_PIPELINE = "sql_filter_vector_legal"  # used for regression analysis
@@ -473,6 +476,35 @@ async def _run_sql_filter_bm25_vector_rrf_legal_plus_tracker_soft_boost(
     return [h.case_id for h in boosted]
 
 
+async def _run_planner_filter_vector_legal(query: str, query_vec: list[float],
+                                            store: VectorStore, conn) -> tuple[list[str], object]:
+    """Like sql_filter_vector_legal but courts come from heuristic planner, not oracle."""
+    from rag.legal_ranker import QueryContext, rerank as legal_rerank
+    from rag.court_planner import plan_courts
+    plan = plan_courts(query)
+    if plan.courts:
+        point_ids = _get_point_ids_for_courts(conn, plan.courts, plan.years)
+        hits = store.search_within(query_vec, point_ids, top_k=_FETCH_K) \
+               if point_ids else store.search(query_vec, top_k=_FETCH_K)
+    else:
+        hits = store.search(query_vec, top_k=_FETCH_K)
+    deduped = _dedup_sr(hits)
+    ctx = QueryContext.from_query(query)
+    ordered = legal_rerank(deduped, ctx)
+    return [h.case_id for h in ordered], plan
+
+
+async def _run_no_filter_vector_legal(query: str, query_vec: list[float],
+                                      store: VectorStore) -> list[str]:
+    """Full-corpus vector search + legal ranker; no court filter at all."""
+    from rag.legal_ranker import QueryContext, rerank as legal_rerank
+    hits = store.search(query_vec, top_k=_FETCH_K)
+    deduped = _dedup_sr(hits)
+    ctx = QueryContext.from_query(query)
+    ordered = legal_rerank(deduped, ctx)
+    return [h.case_id for h in ordered]
+
+
 def _tracker_point_ids(task_type: str, conn, courts: list[str],
                        years: list[int] | None) -> list[str]:
     if task_type == "sentencing":
@@ -520,6 +552,108 @@ def _aggregate(pipeline_runs: list[dict]) -> dict:
     keys = [f"hit_gold_at_{k}" for k in _HIT_K_VALUES] + \
            [f"hit_rel_at_{k}" for k in _HIT_K_VALUES] + ["mrr", "irr_at_5"]
     return {k: _mean([r[k] for r in pipeline_runs]) for k in keys}
+
+
+def _build_planner_analysis_report(all_results: list[dict]) -> str:
+    """Per-query comparison: oracle courts vs heuristic planner courts.
+
+    Match types:
+      exact     planner courts == oracle courts
+      superset  oracle courts is a strict subset of planner courts
+      subset    planner courts is a strict subset of oracle courts (coverage risk)
+      partial   overlap but neither is a subset of the other
+      disjoint  no overlap (certain coverage regression)
+      no_filter planner returned None (full corpus fallback)
+    """
+    baseline = _BASELINE_PIPELINE
+    planner = "planner_filter_vector_legal"
+    no_filter = "no_filter_vector_legal"
+
+    lines = [
+        "# Planner vs Oracle Court Filter Analysis",
+        "",
+        "Compares heuristic court planner output against oracle (gold expected_courts).",
+        "Measures quality gap between oracle-filtered and planner-filtered pipelines.",
+        "",
+        "## Per-Query Detail",
+        "",
+        "| Query | Oracle | Planner | Match | Oracle MRR | Planner MRR | NoFilter MRR |",
+        "|---|---|---|---|---:|---:|---:|",
+    ]
+
+    match_counts: dict[str, int] = {}
+    for r in all_results:
+        plan_data = r.get("planner_data", {})
+        oracle_courts = sorted(r.get("expected_courts", []))
+        planner_courts = sorted(plan_data.get("courts") or [])
+        signals = ", ".join(plan_data.get("signals", [])[:3])
+        confidence = plan_data.get("confidence", "?")
+
+        o, p = set(oracle_courts), set(planner_courts)
+        if not p:
+            match = "no_filter"
+        elif o == p:
+            match = "exact"
+        elif o < p:
+            match = "superset"
+        elif p < o:
+            match = "subset"
+        elif o & p:
+            match = "partial"
+        else:
+            match = "disjoint"
+
+        match_counts[match] = match_counts.get(match, 0) + 1
+
+        base_mrr = r.get("scores", {}).get(baseline, {}).get("mrr", 0)
+        plan_mrr = r.get("scores", {}).get(planner, {}).get("mrr", 0)
+        nf_mrr   = r.get("scores", {}).get(no_filter, {}).get("mrr", 0)
+        oracle_str  = "+".join(oracle_courts)
+        planner_str = "+".join(planner_courts) if planner_courts else "(none)"
+        delta_symbol = "=" if plan_mrr == base_mrr else ("+" if plan_mrr > base_mrr else "-")
+        lines.append(
+            f"| {r['id']} "
+            f"| {oracle_str} "
+            f"| {planner_str} "
+            f"| {match} "
+            f"| {base_mrr:.3f} "
+            f"| {plan_mrr:.3f} ({delta_symbol}) "
+            f"| {nf_mrr:.3f} |"
+        )
+
+    lines += [
+        "",
+        "## Match Type Summary",
+        "",
+        "| Match type | Count | Meaning |",
+        "|---|---:|---|",
+        f"| exact | {match_counts.get('exact', 0)} | Planner matched oracle courts perfectly |",
+        f"| superset | {match_counts.get('superset', 0)} | Planner included all oracle courts + extras (safe, larger pool) |",
+        f"| subset | {match_counts.get('subset', 0)} | Planner missed some oracle courts (coverage risk) |",
+        f"| partial | {match_counts.get('partial', 0)} | Partial overlap (some oracle courts missing) |",
+        f"| disjoint | {match_counts.get('disjoint', 0)} | No overlap - definite coverage regression |",
+        f"| no_filter | {match_counts.get('no_filter', 0)} | Planner returned None - full corpus fallback |",
+    ]
+
+    # Aggregate MRR comparison
+    all_base = [r.get("scores", {}).get(baseline, {}).get("mrr", 0) for r in all_results if baseline in r.get("scores", {})]
+    all_plan = [r.get("scores", {}).get(planner, {}).get("mrr", 0) for r in all_results if planner in r.get("scores", {})]
+    all_nf   = [r.get("scores", {}).get(no_filter, {}).get("mrr", 0) for r in all_results if no_filter in r.get("scores", {})]
+
+    def _m(lst): return round(sum(lst) / len(lst), 3) if lst else 0.0
+
+    lines += [
+        "",
+        "## Aggregate MRR",
+        "",
+        "| Pipeline | MRR | vs oracle |",
+        "|---|---:|---:|",
+        f"| {baseline} (oracle) | {_m(all_base):.3f} | - |",
+        f"| {planner} | {_m(all_plan):.3f} | {_m(all_plan) - _m(all_base):+.3f} |",
+        f"| {no_filter} | {_m(all_nf):.3f} | {_m(all_nf) - _m(all_base):+.3f} |",
+    ]
+
+    return "\n".join(lines) + "\n"
 
 
 def _build_regression_report(all_results: list[dict], pipelines_run: list[str]) -> str:
@@ -749,6 +883,11 @@ def _write_reports(all_results: list[dict], gold_records: list[dict],
         reg_path.write_text(_build_regression_report(all_results, pipelines_run))
         print(f"  -> {reg_path}")
 
+    if "planner_filter_vector_legal" in pipelines_run:
+        plan_path = _REPORTS_DIR / "planner_analysis.md"
+        plan_path.write_text(_build_planner_analysis_report(all_results))
+        print(f"  -> {plan_path}")
+
 
 # ---------------------------------------------------------------------------
 # Main
@@ -860,6 +999,23 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
                 _score(ids, gold, court_lookup)
             top5["sql_filter_bm25_vector_rrf_legal_plus_tracker_soft_boost"] = ids[:5]
 
+        planner_data: dict = {}
+        if "planner_filter_vector_legal" in pipelines:
+            ids, plan = await _run_planner_filter_vector_legal(q, vec, store, conn)
+            scores["planner_filter_vector_legal"] = _score(ids, gold, court_lookup)
+            top5["planner_filter_vector_legal"] = ids[:5]
+            planner_data = {
+                "courts": plan.courts,
+                "years": plan.years,
+                "signals": plan.signals,
+                "confidence": plan.confidence,
+            }
+
+        if "no_filter_vector_legal" in pipelines:
+            ids = await _run_no_filter_vector_legal(q, vec, store)
+            scores["no_filter_vector_legal"] = _score(ids, gold, court_lookup)
+            top5["no_filter_vector_legal"] = ids[:5]
+
         all_results.append({
             "id": gold["id"],
             "query": q,
@@ -869,6 +1025,7 @@ async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
             "expected_courts": courts,
             "scores": scores,
             "top5": top5,
+            "planner_data": planner_data,
         })
 
         for p in pipelines:
