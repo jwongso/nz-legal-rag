@@ -1,8 +1,9 @@
 # NZ Legal RAG - Benchmark Results
 
 Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker + tracker-first),
-and 2026-05-22 (BM25 hybrid). Source data: `benchmarks/reports/comprehensive_report.md`,
-`benchmarks/reports/rerank_sweep.md`, and `benchmarks/reports/latest.json`.
+2026-05-22 (BM25 hybrid), and 2026-05-22 (gold dataset revision). Source data:
+`benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
+and `benchmarks/reports/latest.json`.
 
 ---
 
@@ -127,15 +128,15 @@ Queries: 30. Gold dataset: `benchmarks/datasets/retrieval_gold.jsonl`.
 | vector_only | 0.00 | 0.13 | 0.70 | 0.13 | 0.87 | 0.045 | 0.00 |
 | sql_filter_vector | 0.03 | 0.23 | 1.00 | 0.27 | 1.00 | 0.112 | 0.00 |
 | sql_filter_vector_rerank (N=20) | 0.07 | 0.20 | 0.80 | 0.30 | 0.87 | 0.142 | 0.00 |
-| sql_filter_vector_legal | 0.10 | 0.23 | 1.00 | 0.27 | 1.00 | **0.154** | 0.00 |
+| sql_filter_vector_legal | 0.10 | 0.27 | 1.00 | 0.30 | 1.00 | **0.163** | 0.00 |
 | sql_filter_vector_legal_rerank_5 | 0.10 | 0.23 | 0.93 | 0.23 | 0.93 | 0.118 | 0.00 |
 | sql_tracker_vector | 0.03 | 0.23 | 0.97 | 0.27 | 0.97 | 0.115 | 0.00 |
 | sql_tracker_vector_legal | 0.10 | 0.23 | 0.97 | 0.27 | 0.97 | 0.158 | 0.00 |
 | sql_filter_bm25_legal | 0.00 | 0.00 | 0.00 | 0.00 | 0.03 | 0.000 | 0.00 |
 | sql_filter_bm25_vector_rrf_legal | 0.10 | 0.20 | 0.80 | 0.27 | 0.97 | 0.147 | 0.00 |
 | sql_filter_bm25_vector_rrf_legal_plus_tracker_soft_boost | 0.10 | 0.20 | 0.83 | 0.27 | 0.97 | 0.147 | 0.00 |
-| planner_filter_vector_legal | 0.10 | 0.23 | 1.00 | 0.23 | 1.00 | **0.152** | 0.00 |
-| no_filter_vector_legal | 0.07 | 0.07 | 0.40 | 0.07 | 0.60 | 0.059 | 0.00 |
+| planner_filter_vector_legal | 0.10 | 0.27 | 1.00 | 0.27 | 1.00 | **0.160** | 0.00 |
+| no_filter_vector_legal | 0.07 | 0.10 | 0.40 | 0.10 | 0.60 | 0.067 | 0.00 |
 
 **Production pipeline: `planner_filter_vector_legal` (RERANK_MODE=off)**
 **Oracle upper bound: `sql_filter_vector_legal` - benchmark reference only, not deployed**
@@ -332,10 +333,16 @@ In priority order based on analysis:
 4. ~~Hybrid BM25 + vector with RRF fusion~~ - done. All three variants regress vs
    baseline. BM25 AND-matching too strict; RRF k=60 not suited to low-recall BM25.
    Conditional BM25 (statute queries only) + weighted RRF is the next experiment.
-5. Gold dataset revision for sentencing queries - MRR=0 is a dataset quality
-   problem, not a retrieval problem. Several expected_documents do not contain
-   the query terms. Fix: add acceptable_documents that BM25 and vector do surface,
-   or replace mismatched gold docs.
+5. ~~Gold dataset revision~~ - done. Two needs_review records fixed:
+   - sentencing_aggravated_robbery_starting_point: removed NZCA/2026/67 (murder)
+     and NZCA/2024/50 (sexual offence) - both mistagged in sentencing_cases, no
+     "aggravated robbery" in chunk text. Replaced with NZCA/2023/519 (Herewini,
+     26 on-point chunks) and NZCA/2024/359 (Lo v R). Query MRR: 0.000 -> 0.250.
+   - statute_rta_landlord_entry: NZLEG/RTA/s123A (document retention) replaced
+     with NZLEG/RTA/s48 (Landlord's right of entry, 24h notice, inspection rules).
+     MRR stays 0 - s48 is at retrieval rank 9, outside top-5 fetch window.
+   Overall: oracle MRR 0.154->0.163 (+6%), planner MRR 0.152->0.160 (+5%).
+   Remaining sentencing MRR=0 (7 queries) is genuine retrieval hardness, not data.
 6. ~~Oracle filters vs. auto-planner filters~~ - done. Heuristic planner achieves
    H@5(r)=1.00 and MRR=0.152 vs oracle MRR=0.154. Zero coverage regressions.
    Court filtering value confirmed: no-filter baseline MRR=0.059 (-62% vs oracle).
@@ -346,19 +353,20 @@ In priority order based on analysis:
 
 Retrieval baseline for answer-construction benchmarks:
   Pipeline: planner_filter_vector_legal
-  H@5(r)=1.00, MRR=0.152
+  H@5(r)=1.00, MRR=0.160 (post gold revision)
   The retrieval bottleneck is solved. Next bottleneck: did we package and use the
   retrieved context correctly for the generator?
 
 ### 6. Oracle vs heuristic court planner
 
-Two new pipelines benchmarked against the oracle baseline:
+Two new pipelines benchmarked against the oracle baseline.
+Numbers updated after gold dataset revision (2026-05-22): see Next Benchmarks item 5.
 
 | Pipeline | H@5(g) | H@5(r) | MRR | vs oracle |
 |---|---:|---:|---:|---:|
-| sql_filter_vector_legal (oracle) | 0.23 | 1.00 | 0.154 | - |
-| planner_filter_vector_legal | 0.23 | 1.00 | 0.152 | -0.002 |
-| no_filter_vector_legal | 0.07 | 0.40 | 0.059 | -0.095 |
+| sql_filter_vector_legal (oracle) | 0.27 | 1.00 | 0.163 | - |
+| planner_filter_vector_legal | 0.27 | 1.00 | 0.160 | -0.003 |
+| no_filter_vector_legal | 0.10 | 0.40 | 0.067 | -0.096 |
 
 **Planner (`rag/court_planner.py`)**: heuristic keyword planner with no LLM call.
 Detects courts from domain signals (criminal, employment, tenancy, ACC, human rights,
@@ -374,9 +382,11 @@ Match quality on 30 gold queries:
 - subset: 5 (planner misses some oracle courts - verified to be NZEmpC when gold docs are NZERA)
 - disjoint: 0 (no hard coverage regressions)
 
-**Result**: planner achieves oracle-equivalent H@5(r)=1.00 and MRR within 1% of
+**Result**: planner achieves oracle-equivalent H@5(r)=1.00 and MRR within 2% of
 oracle. The heuristic planner is production-ready for court/year routing. No LLM
-needed for this step.
+needed for this step. MRR gap vs oracle increased marginally (0.002->0.003) after
+gold revision because sentencing_aggravated_robbery_starting_point improved by
++0.250 for both pipelines identically - gap unchanged in practice.
 
 **No-filter baseline**: confirms court filtering is critical. Without any filter,
 H@5(r) drops to 0.40 and MRR drops 62% vs oracle. The full corpus (23,561 docs)
