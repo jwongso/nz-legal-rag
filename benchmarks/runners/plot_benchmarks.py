@@ -20,7 +20,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 
 _REPORTS = Path("benchmarks/reports")
-_OUT = _REPORTS / "figures"
+_OUT = Path("benchmarks/figures")
 _OUT.mkdir(exist_ok=True)
 
 # Color palette - accessible, works in print

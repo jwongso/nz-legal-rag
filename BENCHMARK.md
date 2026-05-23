@@ -832,6 +832,8 @@ Q5_K_M loads cleanly at ctx-size 12288.
 **Throughput:** Q5 is 13% slower than Q4 (38.9 vs 44.8 tok/s); Q6 is 27% slower.
 At these token rates, the practical latency difference per query is under 3 seconds.
 
+![Quantization sweep results](benchmarks/figures/fig3_quant_sweep.png)
+
 ### 11.3 Decision
 
 **Q5_K_M promoted to production default.** Best quality across faithfulness and
@@ -885,6 +887,8 @@ H@5(r) and H@10(r). Neither beats Qwen3-Embedding on gold metrics.
 is capped at 15k fill chunks (from 813k total). Results on the full corpus may differ,
 particularly for sentencing queries that rely on dense NZCA coverage.
 
+![Embedding shootout retrieval metrics](benchmarks/figures/fig1_embed_retrieval.png)
+
 ### 12.3 Decision
 
 **Qwen3-Embedding-0.6B is the recommended next embedder to evaluate on the full corpus.**
@@ -927,6 +931,10 @@ better final answers when using the same generator?
 | statute | Qwen3-Embedding | 4 | **4.25** | **4.00** | **1.00** |
 | synthesis | nomic | 3 | 4.00 | 3.33 | 0.17 |
 | synthesis | Qwen3-Embedding | 3 | **4.33** | 3.00 | **0.67** |
+
+![Answer quality by task type](benchmarks/figures/fig2_embed_answer.png)
+
+![Retrieval MRR vs answer faithfulness](benchmarks/figures/fig4_retrieval_vs_answer.png)
 
 ### 13.2 Observations
 
