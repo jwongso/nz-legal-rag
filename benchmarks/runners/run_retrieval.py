@@ -893,19 +893,29 @@ def _write_reports(all_results: list[dict], gold_records: list[dict],
 # Main
 # ---------------------------------------------------------------------------
 
-async def run(gold_path: Path, pipelines: list[str], quick: bool) -> None:
+async def run(
+    gold_path: Path,
+    pipelines: list[str],
+    quick: bool,
+    collection: str | None = None,
+    embed_model: str | None = None,
+) -> None:
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     gold_records = [json.loads(l) for l in gold_path.open() if l.strip()]
     if quick:
         gold_records = gold_records[:10]
 
+    effective_collection = collection or config.QDRANT_COLLECTION
     print(f"Retrieval benchmark: {len(gold_records)} queries, pipelines={pipelines}")
+    if embed_model:
+        print(f"  embed_model: {embed_model}")
+    print(f"  collection:  {effective_collection}")
     print()
 
     conn = psycopg2.connect(dbname="nz_legal")
-    embedder = Embedder()
-    store = VectorStore()
+    embedder = Embedder(model_name=embed_model)
+    store = VectorStore(collection=collection)
     needs_reranker = (
         "sql_filter_vector_rerank" in pipelines
         or "sql_filter_vector_legal_rerank_5" in pipelines
@@ -1065,11 +1075,16 @@ def main() -> None:
     parser.add_argument("--gold", type=Path, default=_GOLD_PATH)
     parser.add_argument("--pipelines", nargs="+", default=_ALL_PIPELINES,
                         choices=_ALL_PIPELINES,
-                        help="Which pipelines to run (default: all three)")
+                        help="Which pipelines to run (default: all)")
     parser.add_argument("--quick", action="store_true",
                         help="Run first 10 queries only")
+    parser.add_argument("--collection", default=None,
+                        help="Qdrant collection to search (default: config.QDRANT_COLLECTION)")
+    parser.add_argument("--embed-model", default=None,
+                        help="HuggingFace embedder model (default: nomic-ai/nomic-embed-text-v1.5)")
     args = parser.parse_args()
-    asyncio.run(run(args.gold, args.pipelines, args.quick))
+    asyncio.run(run(args.gold, args.pipelines, args.quick,
+                    collection=args.collection, embed_model=args.embed_model))
 
 
 if __name__ == "__main__":

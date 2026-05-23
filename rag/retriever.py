@@ -74,14 +74,15 @@ class SearchResult:
 
 
 class VectorStore:
-    def __init__(self) -> None:
+    def __init__(self, collection: str | None = None) -> None:
         self._client = QdrantClient(url=config.QDRANT_URL)
+        self._collection = collection or config.QDRANT_COLLECTION
 
     def ensure_collection(self) -> None:
         existing = [c.name for c in self._client.get_collections().collections]
         if config.QDRANT_COLLECTION not in existing:
             self._client.create_collection(
-                collection_name=config.QDRANT_COLLECTION,
+                collection_name=self._collection,
                 vectors_config=VectorParams(
                     size=config.EMBED_DIM,
                     distance=Distance.COSINE,
@@ -90,7 +91,7 @@ class VectorStore:
             # Payload indexes for fast filtered search
             for field in ("court", "year"):
                 self._client.create_payload_index(
-                    collection_name=config.QDRANT_COLLECTION,
+                    collection_name=self._collection,
                     field_name=field,
                     field_schema="keyword" if field == "court" else "integer",
                 )
@@ -104,7 +105,7 @@ class VectorStore:
             )
             for vec, payload in zip(vectors, payloads)
         ]
-        self._client.upsert(collection_name=config.QDRANT_COLLECTION, points=points)
+        self._client.upsert(collection_name=self._collection, points=points)
 
     def search(
         self,
@@ -144,7 +145,7 @@ class VectorStore:
         )
 
         hits = self._client.query_points(
-            collection_name=config.QDRANT_COLLECTION,
+            collection_name=self._collection,
             query=query_vector,
             limit=top_k,
             query_filter=query_filter,
@@ -160,7 +161,7 @@ class VectorStore:
     ) -> list[SearchResult]:
         """Semantic search with an arbitrary pre-built Qdrant filter."""
         hits = self._client.query_points(
-            collection_name=config.QDRANT_COLLECTION,
+            collection_name=self._collection,
             query=query_vector,
             limit=top_k,
             query_filter=query_filter,
@@ -183,7 +184,7 @@ class VectorStore:
             return []
 
         hits = self._client.query_points(
-            collection_name=config.QDRANT_COLLECTION,
+            collection_name=self._collection,
             query=query_vector,
             limit=top_k,
             query_filter=Filter(must=[HasIdCondition(has_id=point_ids)]),
@@ -274,7 +275,7 @@ class VectorStore:
 
         # Fetch limit*4 candidates to have room after dedup
         raw, _ = self._client.scroll(
-            collection_name=config.QDRANT_COLLECTION,
+            collection_name=self._collection,
             scroll_filter=query_filter,
             limit=limit * 4,
             with_payload=True,
@@ -355,7 +356,7 @@ class VectorStore:
         query_filter = Filter(must=must, should=should or None)
 
         raw, _ = self._client.scroll(
-            collection_name=config.QDRANT_COLLECTION,
+            collection_name=self._collection,
             scroll_filter=query_filter,
             limit=limit * 6,
             with_payload=True,
@@ -462,7 +463,7 @@ class VectorStore:
         query_filter = Filter(must=must, should=should or None)
 
         raw, _ = self._client.scroll(
-            collection_name=config.QDRANT_COLLECTION,
+            collection_name=self._collection,
             scroll_filter=query_filter,
             limit=limit * 4,
             with_payload=True,
@@ -519,7 +520,7 @@ class VectorStore:
 
     def get_by_case_id(self, case_id: str) -> list[SearchResult]:
         results, _ = self._client.scroll(
-            collection_name=config.QDRANT_COLLECTION,
+            collection_name=self._collection,
             scroll_filter=Filter(
                 must=[FieldCondition(key="case_id", match=MatchValue(value=case_id))]
             ),
