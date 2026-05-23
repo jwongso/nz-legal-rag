@@ -2,10 +2,11 @@
 
 Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker + tracker-first),
 2026-05-22 (BM25 hybrid), 2026-05-22 (gold dataset revision), 2026-05-23 (citation support),
-and 2026-05-23 (answer quality).
+2026-05-23 (answer quality), and 2026-05-23 (complete 8B GPU baseline run - sections 7-10).
 Source data:
 `benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
-and `benchmarks/reports/latest.json`.
+`benchmarks/reports/latest.json`, `benchmarks/reports/context_packing.md`,
+`benchmarks/reports/citation_support.md`, `benchmarks/reports/answer_quality.md`.
 
 ---
 
@@ -23,7 +24,7 @@ and `benchmarks/reports/latest.json`.
 
 | Component | Model / Version |
 |---|---|
-| LLM (generator) | qwen3 via llama-server (http://localhost:8080/v1) |
+| LLM (generator) | Qwen3-8B-Q4_K_M via llama-server (GPU, http://localhost:8080/v1) |
 | Embedder | nomic-embed-text (dim=768, via Ollama) |
 | Reranker | BAAI/bge-reranker-v2-m3 (cross-encoder, CPU) |
 | Vector store | Qdrant collection `nz_legal` (http://localhost:6333) |
@@ -596,6 +597,144 @@ and query-time corpus routing (detect statute-heavy queries and boost NZLEG/NZHR
 
 ---
 
+### 10. Complete Baseline Run (2026-05-23, Qwen3-8B, GPU)
+
+First end-to-end run with the locked 8B GPU stack. All four sub-benchmarks run sequentially.
+Model: `Qwen3-8B-Q4_K_M.gguf`. VRAM: 6620 / 8188 MB. Embedder: Ollama (CPU).
+
+#### 10.1 Embedder
+
+| Metric | Value |
+|---|---:|
+| Single-query mean | 27.0 ms |
+| Single-query min | 22.7 ms |
+| Single-query max | 30.6 ms |
+| Peak throughput | 23.8 chunks/s (batch=100) |
+| Index points | 982,361 |
+| hit@5 | 100.0% |
+| hit@10 | 100.0% |
+
+#### 10.2 Reranker
+
+Re-confirmed from prior sweep. Mean rank improvement: **11.1 positions** (pre-rerank rank of best
+doc, promoted to rank 1 on average). Score range: 0.000-0.994, mean=0.26, std=0.34.
+
+Note: per-N latency from this run is noisy (model warm-up at N=5 caused 3160 ms vs 911 ms at N=10
+for the first query). The decision to keep RERANK_MODE=off is unchanged.
+
+#### 10.3 Retrieval (re-confirmation, 30 queries, 12 pipelines)
+
+Full 12-pipeline re-run confirms prior rankings. Small MRR differences vs. section 3 are
+due to gold dataset revision applied between runs.
+
+| Pipeline | H@5(g) | H@5(r) | H@10(r) | MRR |
+|---|---:|---:|---:|---:|
+| planner_filter_vector_legal (production) | 0.27 | 1.00 | 1.00 | 0.160 |
+| sql_filter_vector_legal (oracle) | 0.27 | 1.00 | 1.00 | 0.163 |
+| sql_tracker_vector_legal | 0.27 | 0.97 | 0.97 | 0.166 |
+| sql_filter_bm25_vector_rrf_legal | 0.27 | 1.00 | 1.00 | 0.163 |
+| sql_filter_bm25_vector_rrf_legal + tracker boost | 0.27 | 1.00 | 1.00 | 0.163 |
+| sql_filter_vector_rerank | 0.20 | 0.80 | 0.87 | 0.142 |
+| vector_only | 0.17 | 0.70 | 0.87 | 0.053 |
+| no_filter_vector_legal | 0.10 | 0.40 | 0.60 | 0.067 |
+| sql_filter_bm25_legal | 0.00 | 0.00 | 0.00 | 0.002 |
+
+Production pipeline `planner_filter_vector_legal` achieves oracle-equivalent H@5(r)=1.00.
+Sentencing queries remain MRR=0.000 across all pipelines (confirmed retrieval hardness).
+
+#### 10.4 Generator
+
+8B model on GPU vs. prior CPU-only 35B runs.
+
+| Metric | 8B GPU (this run) | 35B CPU (prior) | Improvement |
+|---|---:|---:|---:|
+| TTFT mean | 62 ms | 6,280 ms | 101x faster |
+| TTFT min | 49 ms | 3,970 ms | |
+| TTFT max | 144 ms | 16,450 ms | |
+| Tokens/sec mean | 59.5 | 4.6 | 13x faster |
+| Tokens/sec min | 50.9 | 1.4 | |
+| Tokens/sec max | 67.5 | 6.6 | |
+| Citation rate | 100% | 100% | unchanged |
+
+VRAM usage stable: 6620 MB before, 6622 MB after (8 queries generated).
+
+#### 10.5 Context packing (8B generator)
+
+Same 6 formats, 14 queries. 8B produces shorter answers (234 tok vs 364 tok baseline) and
+reveals a spurious citation issue in `baseline` and `full_chunk` absent in the 35B run.
+
+| Format | ctx_tok | ans_tok | all_in_ctx | no_ctx | diversity | spurious | lat_s |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| baseline | 494 | 234 | 0.93 | 0.07 | 3.6 | **0.2** | 5.0 |
+| metadata_rich | 727 | 239 | **1.00** | 0.00 | 3.1 | **0.0** | 5.2 |
+| full_chunk | 521 | 236 | 0.93 | 0.07 | 3.7 | **0.2** | 4.7 |
+| statute_first | 727 | 246 | **1.00** | 0.00 | **3.8** | **0.0** | 5.1 |
+| top3_only | 473 | 218 | **1.00** | 0.14 | 2.5 | **0.0** | **4.5** |
+| max2_per_doc | 1160 | 284 | 0.93 | 0.07 | **3.8** | 0.1 | 6.4 |
+
+Spurious citations in `baseline` and `full_chunk` originate from one query
+(`general_constructive_dismissal`) where the 8B model cites paragraph numbers inside the
+legal text as if they were source indices. `metadata_rich` and `statute_first` suppress this
+by adding structural headers that disambiguate source markers from in-text numbering.
+
+**Updated recommendation**: promote `statute_first` to general default (not statute-only).
+It achieves perfect citation accuracy (`all_in_ctx=1.00`, `spurious=0.0`), highest diversity
+(3.8), and identical latency (5.1s vs 5.0s baseline). The metadata overhead is justified
+by the citation quality improvement for 8B models.
+
+#### 10.6 Citation support (8B judge)
+
+37 claim-citation pairs across 14 queries.
+
+| Verdict | Count | Rate |
+|---|---:|---:|
+| YES - passage supports claim | 32 | 0.86 |
+| PARTIALLY | 0 | 0.00 |
+| NO - passage does not support | 5 | 0.14 |
+
+0 claims extracted for `general_constructive_dismissal` (answer had spurious paragraph
+citations that the extractor correctly rejected) and `statute_rta_landlord_entry` (answer
+had only inline citations from the statute text, none in `[N]` format).
+
+Result matches the 35B-judged run (0.86 YES both times). Judge calibration is consistent
+across model sizes for this task.
+
+#### 10.7 Answer quality (8B judge)
+
+| Dimension | Mean (1-5) | F=5 | F=4 | F=3 |
+|---|---:|---:|---:|---:|
+| Faithfulness | 4.00 | 4 | 6 | 4 |
+| Completeness | 3.64 | 4 | 1 | 9 |
+
+**vs. 35B judge (section 9)**: faithfulness dropped 5.00 -> 4.00 (8B judge more critical of
+broad claims vs. specific sources); completeness rose 3.21 -> 3.64 (8B applies a less strict
+coverage standard). The relative ranking of queries is stable: the same 4 queries score
+5/5 on both dimensions in both runs (`general_fair_process_dismissal`,
+`general_constructive_dismissal`, `statute_era_s103a_justification`, `statute_rta_landlord_entry`).
+
+Per-query (faithfulness / completeness):
+
+| Query | F | C | Notes |
+|---|---:|---:|---|
+| general_landlord_entry_notice | 4 | 3 | Missing specific notice duration |
+| general_sick_leave_medical_cert | 4 | 3 | No statutory ERA principle cited |
+| general_rent_increase_rules | 3 | 3 | Source [5] wrongly cited for minor alterations claim |
+| general_privacy_act_employer | 4 | 3 | No-context flag raised, judge confirmed justified |
+| general_acc_personal_injury | 4 | 3 | Missing s20(2) exclusion categories |
+| general_fair_process_dismissal | 5 | 5 | - |
+| general_workplace_harassment | 4 | 3 | No remedies in corpus; flag raised |
+| general_constructive_dismissal | 5 | 5 | - |
+| general_workplace_discrimination_hrrt | 3 | 3 | s19(2) cited beyond what source states |
+| general_periodic_tenancy_termination | 3 | 3 | 90-day notice stated as general rule; context incomplete |
+| statute_era_s103a_justification | 5 | 5 | - |
+| statute_era_s103_personal_grievance | 3 | 3 | Only one of seven PG types in retrieved context |
+| statute_rta_landlord_entry | 5 | 5 | - |
+| statute_era_s127_interim_reinstatement | 4 | 4 | Undertaking requirement not mentioned |
+
+No unjustified no-context flags (1 raised, 1 confirmed as genuine).
+
+---
+
 ## Production Configuration (Locked)
 
 Based on all benchmarks, the following decisions are locked and should not be
@@ -608,7 +747,7 @@ re-opened without new evidence from a benchmark run.
 | BM25_MODE | conditional_statute_only | Global BM25 causes regressions; statute/section/citation queries only |
 | TRACKER_JOIN_MODE | soft_only | Hard JOIN excludes acceptable docs; additive post-rank bonus only |
 | COURT_PLANNER | deterministic heuristic | Keyword signals, no LLM; oracle pipeline (sql_filter_vector_legal) kept as benchmark upper bound |
-| CONTEXT_PACK_MODE | baseline (general); statute_first (statute) | Metadata headers add no quality; 5 docs > 2 chunks/doc; statute_first free win for statute intent |
+| CONTEXT_PACK_MODE | statute_first (all queries) | 8B run shows baseline/full_chunk have spurious=0.2; statute_first fixes this at identical latency with highest diversity |
 
 ### Production routing
 
