@@ -30,7 +30,13 @@ def _load(path: Path) -> list[dict]:
 def _model_label(records: list[dict]) -> str:
     sid = records[0].get("server_model_id", "")
     gm = records[0].get("generator_model", "")
-    return sid if sid and sid != gm else gm
+    base = sid if sid and sid != gm else gm
+    em = records[0].get("embed_model", "")
+    # Shorten embed model to last path component if present
+    em_short = em.split("/")[-1] if em else ""
+    if em_short:
+        return f"{base} + {em_short}"
+    return base
 
 
 def _aggregate(records: list[dict]) -> dict:

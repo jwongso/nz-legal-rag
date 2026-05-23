@@ -232,16 +232,21 @@ async def run(args: argparse.Namespace) -> None:
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    embed_model = args.embed_model or None
+    collection = args.collection or None
+
     print(f"Generation pass")
     print(f"  model:        {model} (server reports: {server_model_id})")
     print(f"  base_url:     {base_url}")
     print(f"  pack_mode:    {pack_mode}")
+    print(f"  embed_model:  {embed_model or 'default (nomic)'}")
+    print(f"  collection:   {collection or 'default'}")
     print(f"  questions:    {len(questions)}")
     print(f"  out:          {out_path}")
     print()
 
-    embedder = Embedder()
-    store = VectorStore()
+    embedder = Embedder(model_name=embed_model)
+    store = VectorStore(collection=collection)
     conn = psycopg2.connect(dbname="nz_legal")
 
     with out_path.open("w") as fout:
@@ -288,6 +293,8 @@ async def run(args: argparse.Namespace) -> None:
                 "difficulty": q.get("difficulty", "standard"),
                 "generator_model": model,
                 "server_model_id": server_model_id,
+                "embed_model": embed_model or "nomic-ai/nomic-embed-text-v1.5",
+                "qdrant_collection": collection or config.QDRANT_COLLECTION,
                 "retrieval_pipeline": "planner_filter_vector_legal",
                 "context_pack_mode": pack_mode,
                 "sources": sources_rich,
@@ -319,6 +326,10 @@ def main() -> None:
                         help="Comma-separated task types to include (e.g. general,statute)")
     parser.add_argument("--max-questions", type=int, default=None,
                         help="Limit number of questions")
+    parser.add_argument("--embed-model", default=None,
+                        help="Embedding model name (default: nomic-ai/nomic-embed-text-v1.5)")
+    parser.add_argument("--collection", default=None,
+                        help="Qdrant collection name (default: config.QDRANT_COLLECTION)")
     parser.add_argument("--out", default=None,
                         help="Output JSONL path")
     args = parser.parse_args()

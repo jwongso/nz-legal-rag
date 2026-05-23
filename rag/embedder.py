@@ -42,7 +42,7 @@ _DEFAULT_MODEL = "nomic-ai/nomic-embed-text-v1.5"
 
 
 class Embedder:
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, model_name: str | None = None, device: str = "cpu") -> None:
         self._model_name = model_name or _DEFAULT_MODEL
         cfg = _MODEL_CONFIGS.get(self._model_name, {
             "query_prefix": "",
@@ -55,12 +55,12 @@ class Embedder:
         self._model = SentenceTransformer(
             self._model_name,
             trust_remote_code=cfg.get("trust_remote_code", False),
-            device="cpu",
+            device=device,
         )
 
     @property
     def dim(self) -> int:
-        return self._model.get_sentence_embedding_dimension()
+        return self._model.get_embedding_dimension()
 
     def _encode(
         self,

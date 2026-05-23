@@ -74,7 +74,7 @@ def _fetch_chunks(
     if gold_ids:
         cur.execute("""
             SELECT c.qdrant_point_id, c.text, d.citation, c.chunk_index,
-                   d.court, d.title, d.url,
+                   d.court, d.title, d.source_url,
                    EXTRACT(YEAR FROM d.decision_date)::int
             FROM chunks c
             JOIN documents d ON d.id = c.document_id
@@ -94,7 +94,7 @@ def _fetch_chunks(
     for court in courts:
         cur.execute("""
             SELECT c.qdrant_point_id, c.text, d.citation, c.chunk_index,
-                   d.court, d.title, d.url,
+                   d.court, d.title, d.source_url,
                    EXTRACT(YEAR FROM d.decision_date)::int
             FROM chunks c
             JOIN documents d ON d.id = c.document_id
@@ -146,6 +146,8 @@ def main() -> None:
                         help="Retrieval gold JSONL (gold docs always included)")
     parser.add_argument("--batch-size", type=int, default=64,
                         help="Embedding batch size (default: 64)")
+    parser.add_argument("--device", default=None,
+                        help="Torch device: cpu or cuda (default: cuda if available, else cpu)")
     parser.add_argument("--qdrant-url", default=config.QDRANT_URL)
     args = parser.parse_args()
 
@@ -161,8 +163,13 @@ def main() -> None:
     print()
 
     print("Loading embedder...")
-    embedder = Embedder(model_name=args.model)
-    print(f"  dim={embedder.dim}")
+    import torch
+    if args.device:
+        device = args.device
+    else:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    embedder = Embedder(model_name=args.model, device=device)
+    print(f"  dim={embedder.dim}  device={device}")
     print()
 
     print("Fetching chunks from PostgreSQL...")
