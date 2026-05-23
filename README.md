@@ -22,6 +22,30 @@ leaves the machine.
 
 ---
 
+## Benchmark Results
+
+Full retrieval, generation, and answer quality results: **[BENCHMARK.md](BENCHMARK.md)**
+
+The benchmark covers the complete pipeline end-to-end: 12 retrieval pipelines across
+30 gold queries, 6 context packing formats, citation faithfulness judging, and answer
+quality scoring. Key numbers from the locked 8B GPU baseline:
+
+| Dimension | Result |
+|---|---|
+| Retrieval H@5(r) | 1.00 - heuristic planner matches oracle filter, no LLM needed for routing |
+| Retrieval MRR | 0.160 - legal ranker gives +46% MRR over raw vector search |
+| Generator TTFT | 62 ms mean (101x faster than the 35B CPU comparison) |
+| Generator throughput | 59.5 tok/s, 100% citation format compliance |
+| Citation faithfulness | 0.86 (LLM-as-judge, confirmed by both 35B and 8B judges) |
+| Answer faithfulness | 4.00 / 5 (8B judge) |
+| Answer completeness | 3.64 / 5 - gaps trace to corpus coverage, not pipeline failures |
+
+The report also documents what was tried and ruled out: global BM25 (collapsed H@5(r) to 0),
+cross-encoder reranker (caused regressions), tracker hard JOIN (dropped valid cases), and
+no court filter (H@5(r) dropped to 0.40).
+
+---
+
 ## Architecture
 
 ```
