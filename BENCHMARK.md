@@ -2,7 +2,8 @@
 
 Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker + tracker-first),
 2026-05-22 (BM25 hybrid), 2026-05-22 (gold dataset revision), 2026-05-23 (citation support),
-2026-05-23 (answer quality), and 2026-05-23 (complete 8B GPU baseline run - sections 7-10).
+2026-05-23 (answer quality), 2026-05-23 (complete 8B GPU baseline run - sections 7-10),
+and 2026-05-23 (quantization sweep Q4/Q5/Q6 - section 11).
 Source data:
 `benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
 `benchmarks/reports/latest.json`, `benchmarks/reports/context_packing.md`,
@@ -57,6 +58,7 @@ Different sections use different model/judge setups. Key: (d) = deterministic ch
 | 8. Citation support (35B) | 2026-05-23 | planner/vector/legal | baseline | Qwen3.6-35B-A3B (CPU) | Qwen3.6-35B-A3B |
 | 9. Answer quality (35B) | 2026-05-23 | planner/vector/legal | baseline | Qwen3.6-35B-A3B (CPU) | Qwen3.6-35B-A3B |
 | 10. Full 8B baseline | 2026-05-23 | all 12 pipelines + 6 formats | varied | Qwen3-8B-Q4_K_M (GPU) | Qwen3-8B-Q4_K_M |
+| 11. Quant sweep Q4/Q5/Q6 | 2026-05-23 | planner/vector/legal | statute_first | Q4/Q5/Q6 (GPU) | Qwen3-8B-Q4_K_M (fixed) |
 
 ---
 
@@ -73,6 +75,7 @@ re-opened without new evidence from a benchmark run.
 | TRACKER_JOIN_MODE | soft_only | Hard JOIN excludes acceptable docs; additive post-rank bonus only |
 | COURT_PLANNER | deterministic heuristic | Keyword signals, no LLM; oracle pipeline (sql_filter_vector_legal) kept as benchmark upper bound |
 | CONTEXT_PACK_MODE | statute_first (all queries) | 8B run shows baseline/full_chunk have spurious=0.2; statute_first fixes this at identical latency with highest diversity |
+| LLM_MODEL | Qwen3-8B-Q5_K_M (GPU) | Quant sweep (sec 11): Q5 best faith+compl with fixed judge; Q6 OOM at ctx 12288; Q5 selected as production default |
 
 ### Production routing
 
@@ -781,3 +784,54 @@ Per-query (faithfulness / completeness):
 | statute_era_s127_interim_reinstatement | 4 | 4 | Undertaking requirement not mentioned |
 
 No unjustified no-context flags (1 raised, 1 confirmed as genuine).
+
+---
+
+## 11. Quantization Sweep: Q4_K_M vs Q5_K_M vs Q6_K (2026-05-23)
+
+**Infrastructure:** first run using the new multi-model benchmark pipeline
+(`run_generate.py` + `run_judge.py` + `compare_models.py`).
+
+**Setup:**
+- Generator: Qwen3-8B at three quantization levels, each on GPU (RTX 4060 Laptop, 7807 MiB)
+- Question set: `benchmarks/datasets/generator_questions.jsonl` - 20 questions
+  (14 general+statute from the original gold set, plus 3 hard general and 3 synthesis)
+- Context pack: `statute_first` (production default)
+- Judge: Qwen3-8B-Q4_K_M fixed for all three runs (Q5 and Q6 answers re-judged by Q4)
+- Retrieval pipeline: `planner_filter_vector_legal`
+
+### 11.1 Results (fixed Q4 judge)
+
+| Model | N | Faith | Compl | Cit YES | no_ctx | TTFT p50 | tok/s |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Qwen3-8B-Q4_K_M | 20 | 3.65 | 3.30 | 0.77 | 3/20 | 821 ms | 44.8 |
+| Qwen3-8B-Q5_K_M | 20 | 3.85 | 3.65 | 0.58 | 4/20 | 864 ms | 38.9 |
+| Qwen3-8B-Q6_K | 20 | 3.75 | 3.50 | 0.89 | 2/20 | 949 ms | 32.8 |
+
+Faithfulness and completeness are holistic 1-5 judge scores.
+Citation YES rate = claim-citation pairs fully supported / total pairs judged.
+
+### 11.2 Observations
+
+**Quality:** Q5_K_M wins on both faithfulness (+0.20 vs Q4) and completeness (+0.35 vs Q4).
+Q6_K is a modest improvement over Q4 (+0.10 / +0.20) but behind Q5 on completeness.
+
+**Citation rate noise:** the Cit YES column is noisy because each quant generates different
+answers with different citation counts (Q4: 66 pairs, Q5: 53 pairs, Q6: 55 pairs).
+The rate reflects both citation style and model leniency differences - treat it as
+directional only at this sample size.
+
+**VRAM constraint:** Q6_K fails to load at ctx-size 12288 (8188 MiB available).
+It required ctx-size 8192, which reduces available context for long statute queries.
+Q5_K_M loads cleanly at ctx-size 12288.
+
+**Throughput:** Q5 is 13% slower than Q4 (38.9 vs 44.8 tok/s); Q6 is 27% slower.
+At these token rates, the practical latency difference per query is under 3 seconds.
+
+### 11.3 Decision
+
+**Q5_K_M promoted to production default.** Best quality across faithfulness and
+completeness with fixed judge, no VRAM constraint at ctx 12288, acceptable throughput.
+Q6_K offers diminishing quality returns at a hard VRAM cost.
+
+`/etc/llama-server.env` updated; service confirmed running Q5_K_M at ctx 12288.
