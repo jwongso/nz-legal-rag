@@ -29,11 +29,13 @@ class SecondaryChunk:
 
 _SECTION_RE = re.compile(
     r"^("
-    r"\d+\.?\s+[A-Z]"                          # "1. Introduction"
-    r"|[IVXLC]+\.\s+[A-Z]"                     # "IV. Analysis"
-    r"|[A-Z][A-Za-z ]{3,40}$"                  # "Background", "CONCLUSION"
+    r"\d+\.\s+[A-Z][a-z]"                      # "1. Introduction" (digit + period required)
+    r"|[IVXLC]+\.\s+[A-Z][a-z]"                # "IV. Analysis"
+    r"|[A-Z][A-Z\s]{3,40}$"                    # "BACKGROUND", "THE FACTS" (all-caps headings)
+    r"|(?:Abstract|Introduction|Background|Facts|Issues?|Analysis|"
+    r"Conclusion|Summary|Methodology)\b"        # known heading words
     r")",
-    re.MULTILINE,
+    re.MULTILINE | re.IGNORECASE,
 )
 
 _ABSTRACT_RE = re.compile(r"\babstract\b", re.I)
