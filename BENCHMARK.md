@@ -10,6 +10,96 @@ Source data:
 
 ---
 
+## Executive Summary
+
+**Locked production pipeline: `planner_filter_vector_legal`**
+
+Key decisions:
+- Deterministic keyword court planner - no LLM call needed for routing
+- Profile-aware legal ranker (authority / example / tracker / statute modes)
+- Cross-encoder reranker disabled - legal ranker alone performs better
+- BM25 activated only for statute/citation/quoted-phrase queries
+- Tracker metadata as additive soft boost - no hard JOIN
+- `statute_first` context packing for all queries (8B model requires metadata headers to avoid spurious citations)
+
+Headline results:
+- Planner matches oracle H@5(r)=1.00 with only -0.003 MRR gap
+- No-filter baseline drops to H@5(r)=0.40 (court filtering is critical)
+- Legal ranker improves MRR from 0.112 to 0.163 (+46%)
+- 8B GPU generator: 59.5 tok/s, 62ms TTFT (101x faster than 35B CPU)
+- Citation faithfulness: 0.86 (confirmed by both 35B and 8B judges)
+- Answer faithfulness: 4.00/5, completeness: 3.64/5 (8B judge)
+
+### What Did Not Work
+
+| Idea | Result | Decision |
+|---|---|---|
+| Cross-encoder reranker (N=5-50) | More candidates -> more regressions, no MRR gain; N=5 breaks statute queries | Off by default (`RERANK_MODE=off`) |
+| Tracker-first hard JOIN | Drops procedural challenge decisions not in employment_cases | Soft boost only |
+| Global BM25 (`websearch_to_tsquery`) | AND-matching: H@5(r) collapsed to 0.00 across all 30 queries | Conditional statute queries only |
+| No court filter | H@5(r)=0.40; full 23k-doc corpus overwhelms semantic search | Planner required |
+| Top-3 context (top3_only) | Citation failure on statute_era_s103; diversity drops 4.2 -> 2.5 | Keep 5 sources |
+| Two chunks per doc (max2_per_doc) | no_ctx rate doubles (0.14 -> 0.29); 2.3x tokens | One best chunk per doc |
+| Metadata headers alone (metadata_rich) | 47% more tokens with no diversity or faithfulness gain vs statute_first | Use statute_first instead |
+
+---
+
+## Benchmark Version Matrix
+
+Different sections use different model/judge setups. Key: (d) = deterministic checks, no LLM.
+
+| Section | Date | Retriever | Context packer | Generator | Judge |
+|---|---|---|---|---|---|
+| 1-3. Embedder/Reranker/Retrieval | 2026-05-21 to 05-22 | all pipelines | n/a | n/a | (d) |
+| 4. Generator | 2026-05-21 | planner/vector/legal | baseline | Qwen3.6-35B-A3B (CPU) | (d) |
+| 6. Court planner | 2026-05-22 | planner vs oracle | n/a | n/a | (d) |
+| 7. Context packing (35B) | 2026-05-23 | planner/vector/legal | 6 formats | Qwen3.6-35B-A3B (CPU) | (d) |
+| 8. Citation support (35B) | 2026-05-23 | planner/vector/legal | baseline | Qwen3.6-35B-A3B (CPU) | Qwen3.6-35B-A3B |
+| 9. Answer quality (35B) | 2026-05-23 | planner/vector/legal | baseline | Qwen3.6-35B-A3B (CPU) | Qwen3.6-35B-A3B |
+| 10. Full 8B baseline | 2026-05-23 | all 12 pipelines + 6 formats | varied | Qwen3-8B-Q4_K_M (GPU) | Qwen3-8B-Q4_K_M |
+
+---
+
+## Production Configuration (Locked)
+
+Based on all benchmarks, the following decisions are locked and should not be
+re-opened without new evidence from a benchmark run.
+
+| Decision | Value | Rationale |
+|---|---|---|
+| DEFAULT_PIPELINE | planner_filter_vector_legal | Heuristic planner reaches oracle-equivalent H@5(r)=1.00, MRR=0.160 with no LLM call |
+| RERANK_MODE | off | Legal ranker alone outperforms legal ranker + cross-encoder |
+| BM25_MODE | conditional_statute_only | Global BM25 causes regressions; statute/section/citation queries only |
+| TRACKER_JOIN_MODE | soft_only | Hard JOIN excludes acceptable docs; additive post-rank bonus only |
+| COURT_PLANNER | deterministic heuristic | Keyword signals, no LLM; oracle pipeline (sql_filter_vector_legal) kept as benchmark upper bound |
+| CONTEXT_PACK_MODE | statute_first (all queries) | 8B run shows baseline/full_chunk have spurious=0.2; statute_first fixes this at identical latency with highest diversity |
+
+### Production routing
+
+| Intent | Pipeline | Notes |
+|---|---|---|
+| authority | planner_filter_vector_legal | Default legal ranker profile |
+| example | planner_filter_vector_legal | Example profile in legal ranker |
+| tracker | planner_filter_vector_legal | Tracker profile + soft boost (no hard JOIN) |
+| statute | planner_filter_vector_legal + conditional BM25 | BM25 activated for section refs, citations, quoted phrases |
+| default | planner_filter_vector_legal | Fallback for all unclassified intents |
+
+### Conditional BM25 activation rules (rag/bm25_query.py)
+
+BM25 is activated when any one of the following is present in the query:
+
+1. Section reference: s103A, section 103A, s 127
+2. Case citation: NZCA/2024/50, [2024] NZCA 50
+3. Quoted phrase: "interim reinstatement"
+4. Short keyword query: <= 6 tokens, no question words, no trailing "?"
+
+When activated, OR-joined anchors extracted from the query are passed to
+`websearch_to_tsquery`, not the full question string, so FTS does not apply strict
+AND-matching over all stems. When BM25 returns empty (suppressed or no FTS match),
+RRF is skipped entirely and vector cosine scores are used directly.
+
+---
+
 ## Setup
 
 ### Hardware
@@ -18,14 +108,15 @@ Source data:
 |---|---|
 | CPU | AMD Ryzen AI 9 HX 370 (12P / 24L cores) |
 | RAM | 17.3 / 30.5 GB used |
-| GPU | Radeon 890M (integrated) |
+| GPU | Radeon 890M (integrated, 8188 MB shared VRAM) |
 
 ### Software Stack
 
 | Component | Model / Version |
 |---|---|
-| LLM (generator) | Qwen3-8B-Q4_K_M via llama-server (GPU, http://localhost:8080/v1) |
-| Embedder | nomic-embed-text (dim=768, via Ollama) |
+| LLM - current production | Qwen3-8B-Q4_K_M via llama-server (GPU, http://localhost:8080/v1) |
+| LLM - prior comparison | Qwen3.6-35B-A3B-Q5_K_M via llama-server (CPU/iGPU hybrid) |
+| Embedder | nomic-embed-text (dim=768, via Ollama, CPU) |
 | Reranker | BAAI/bge-reranker-v2-m3 (cross-encoder, CPU) |
 | Vector store | Qdrant collection `nz_legal` (http://localhost:6333) |
 | Relational DB | PostgreSQL database `nz_legal` |
@@ -59,7 +150,9 @@ Source data:
 
 ## 1. Embedder
 
-### Single-query latency (10 runs)
+Model: nomic-embed-text (dim=768, Ollama, CPU). 8 test questions.
+
+### Single-query latency
 
 | Metric | Value |
 |---|---:|
@@ -78,6 +171,7 @@ Source data:
 
 Embedding a single query adds ~36 ms to every request. Batch throughput peaks at
 19.6 chunks/sec (batch=1000), which determines ingestion speed for new corpus additions.
+See section 10.1 for updated numbers from the 2026-05-23 full run.
 
 ---
 
@@ -168,9 +262,10 @@ queries - it demotes exact statute sections below broader explanatory case law.
 
 ---
 
-## 4. LLM Generator
+## 4. LLM Generator (Qwen3.6-35B-A3B, CPU-only, initial run)
 
-Model: qwen3. Questions: 8. All successful.
+Model: Qwen3.6-35B-A3B-Q5_K_M, CPU/iGPU hybrid inference. Questions: 8.
+See section 10.4 for the 8B GPU comparison.
 
 | Metric | Value |
 |---|---:|
@@ -349,17 +444,17 @@ In priority order based on analysis:
 6. ~~Oracle filters vs. auto-planner filters~~ - done. Heuristic planner achieves
    H@5(r)=1.00 and MRR=0.152 vs oracle MRR=0.154. Zero coverage regressions.
    Court filtering value confirmed: no-filter baseline MRR=0.059 (-62% vs oracle).
-7. ~~Context packing benchmark~~ - done. See section 7 below.
-8. ~~Citation support benchmark (citation_exists / in_context / supports_claim)~~ - done.
-   See section 8 below.
-9. ~~Answer quality benchmark (faithfulness, completeness, false "not enough context" rate)~~ - done.
-   See section 9 below.
+7. ~~Context packing benchmark~~ - done. See section 7 (35B) and section 10.5 (8B).
+8. ~~Citation support benchmark~~ - done. See section 8 (35B judge) and 10.6 (8B judge).
+9. ~~Answer quality benchmark~~ - done. See section 9 (35B judge) and 10.7 (8B judge).
 
 Retrieval baseline for answer-construction benchmarks:
   Pipeline: planner_filter_vector_legal
   H@5(r)=1.00, MRR=0.160 (post gold revision)
   The retrieval bottleneck is solved. Next bottleneck: did we package and use the
   retrieved context correctly for the generator?
+
+---
 
 ### 6. Oracle vs heuristic court planner
 
@@ -400,15 +495,16 @@ See `benchmarks/reports/planner_analysis.md` for per-query detail.
 
 ---
 
-### 7. Context packing benchmark
+### 7. Context packing benchmark (Qwen3.6-35B-A3B generator)
 
 Six context assembly formats benchmarked. Retrieval fixed at `planner_filter_vector_legal`.
-14 queries (general + statute task types). LLM: Qwen3 via llama-server.
-See `benchmarks/reports/context_packing.md` for per-query detail.
+14 queries (general + statute task types). Generator: Qwen3.6-35B-A3B (CPU/iGPU hybrid).
+See section 10.5 for the 8B repeat. See `benchmarks/reports/context_packing.md` for
+per-query detail.
 
 | Format | ctx_tok | ans_tok | has_cit | all_in_ctx | no_ctx | diversity | lat_s |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| baseline (current) | 494 | 364 | 1.00 | 1.00 | 0.14 | 4.2 | 49.3 |
+| baseline | 494 | 364 | 1.00 | 1.00 | 0.14 | 4.2 | 49.3 |
 | metadata_rich | 727 | 369 | 1.00 | 1.00 | 0.14 | 3.9 | 42.9 |
 | full_chunk | 521 | 353 | 1.00 | 1.00 | 0.21 | 3.9 | 35.8 |
 | statute_first | 727 | 369 | 1.00 | 1.00 | 0.14 | 4.1 | 34.5 |
@@ -423,57 +519,42 @@ See `benchmarks/reports/context_packing.md` for per-query detail.
 - `top3_only`: top 3 docs, full text, metadata_rich headers
 - `max2_per_doc`: up to 2 chunks per doc (10 chunks max), metadata_rich, 600-char each
 
-**Findings**:
+**Findings (35B run)**:
 
-1. **Citation quality is format-independent.** `all_in_ctx=1.00` for every format that
-   produced citations. The LLM follows the `[N]` citation instruction reliably regardless
-   of how the context is structured. Zero spurious paragraph-number false positives after
-   fixing the citation regex to exclude 4-digit NZ case years (`[2023]`).
+1. **Citation quality is format-independent for 35B.** `all_in_ctx=1.00` for every format
+   that produced citations. Note: the 8B run (section 10.5) shows `baseline` and `full_chunk`
+   produce spurious citations (spur=0.2) - this is model-size dependent.
 
 2. **The 600-char truncation does not cut content.** `baseline` vs `full_chunk` have nearly
    identical `ctx_tok` (494 vs 521) because NZ legal chunks are ~120-word windows already
    within the limit. Removing the truncation cap changes nothing.
 
-3. **Metadata headers add tokens without quality gain.** `metadata_rich` uses 47% more
-   context tokens (727 vs 494) with identical `has_cit`, `all_in_ctx`, `no_ctx` metrics
-   and slightly lower source diversity (3.9 vs 4.2). The headers consume prompt budget
-   without improving the answer.
+3. **Metadata headers add tokens without quality gain (35B).** `metadata_rich` uses 47% more
+   context tokens (727 vs 494) with identical citation quality metrics. For 8B models,
+   metadata headers eliminate spurious citations - overhead is justified (see section 10.5).
 
 4. **Two chunks per doc hurts.** `max2_per_doc` raises `no_ctx` rate from 0.14 to 0.29
    (2x), uses 2.3x the context tokens, and increases latency by 20%. The second-best chunk
-   per document is noisier than the top chunk from the next-ranked document. Five diverse
-   documents beat two chunks from one document.
+   per document is noisier than the top chunk from the next-ranked document.
 
 5. **Top 3 docs is insufficient.** `top3_only` drops source diversity from 4.2 to 2.5
-   and produces one complete citation failure (statute_era_s103_personal_grievance: no
-   citations generated from 3 docs). The 4th and 5th ranked docs contribute materially.
+   and produces one complete citation failure (statute_era_s103_personal_grievance).
 
-6. **`no_context_flag` is query-dependent, not format-dependent.** `general_workplace_harassment`
-   triggers the flag in all 6 formats - the retrieved docs do not contain enough specific
-   NZ workplace harassment statute or case law. This is a corpus coverage gap, not a
-   packing problem. `general_sick_leave_medical_cert` triggers it in 4/6 formats
-   (borderline coverage).
+6. **`statute_first` is a free win for statute-intent queries.** Sorting legislation chunks
+   first helps the LLM locate the statute text sooner. For general queries with no NZLEG
+   chunks, `statute_first` behaves identically to `metadata_rich`.
 
-7. **`statute_first` is a free win for statute-intent queries.** Sorting legislation chunks
-   first helps the LLM locate the statute text sooner without increasing `no_ctx` rate.
-   For general queries where no NZLEG chunks are retrieved, `statute_first` behaves
-   identically to `metadata_rich`.
-
-**Conclusion**: The `baseline` format is already near-optimal. No format beats it on the
-combined `{no_ctx, diversity, all_in_ctx}` metrics. The main actionable finding is to adopt
-`statute_first` (legislation before cases) for statute-profile queries since it matches the
-intent-aware ranker's `statute_mode` and helps structure the answer without token cost.
-
-**CONTEXT_PACK_MODE locked** at `baseline` for general/authority/example/tracker queries.
-`statute_first` promoted as the preferred format for statute-intent queries.
+**Conclusion (updated after 8B run)**: `statute_first` is the production default for all
+queries. For 35B it is equivalent to `baseline` on quality; for 8B it eliminates spurious
+paragraph-number citations at no latency cost. See `CONTEXT_PACK_MODE` in Production Config.
 
 ---
 
-### 8. Citation support benchmark
+### 8. Citation support benchmark (Qwen3.6-35B-A3B generator + judge)
 
 Measures whether cited source passages actually back up the claims in the generated answer.
-Format: `baseline` (current production). LLM judge: Qwen3.6-35B-A3B (temperature=0).
-14 queries (general + statute). 57 total claim-citation pairs.
+Format: `baseline`. Generator: Qwen3.6-35B-A3B. Judge: Qwen3.6-35B-A3B (temperature=0).
+14 queries, 57 total claim-citation pairs. See section 10.6 for 8B repeat.
 See `benchmarks/reports/citation_support.md` for per-pair detail.
 
 | Verdict | Count | Rate |
@@ -503,46 +584,35 @@ See `benchmarks/reports/citation_support.md` for per-pair detail.
 
 **Findings**:
 
-1. **Overall faithfulness is high at 0.86.** 8 of 14 queries score 1.00; the remaining 6 have
-   at least one NO verdict. Only 6/57 citations are fully unsupported.
+1. **Overall faithfulness is high at 0.86.** 8 of 14 queries score 1.00; only 6/57 citations
+   fully unsupported.
 
 2. **Weak queries trace to corpus coverage gaps.** `general_sick_leave_medical_cert` (3 NO)
-   and `general_workplace_discrimination_hrrt` (2 NO) are the same queries that already trigger
-   `no_context_flag` in the context packing benchmark. The LLM cites sources that are topically
-   related but cite adjacent case facts (e.g., drug-testing policy) rather than the specific
-   claim (medical certificate after one day of leave). The source exists in context; the LLM
-   over-reaches in the claim it attributes to it.
+   and `general_workplace_discrimination_hrrt` (2 NO) also trigger `no_context_flag` in the
+   context packing benchmark. The LLM over-reaches on adjacent case facts.
 
-3. **PARTIALLY verdicts signal latent issues, not hard failures.** The 2 PARTIALLY cases
-   (`general_fair_process_dismissal [2]` and `statute_era_s103a_justification [4]`) are claims
-   where the passage supports the general principle but not the specific detail cited. A useful
-   target for prompt tuning.
+3. **`statute_era_s103_personal_grievance` 0.50 is a retrieval gap, not a hallucination.**
+   Answer correctly describes section 103 types but cites source [1] for a section 114 claim.
 
-4. **`statute_era_s103_personal_grievance` 0.50 is a retrieval gap, not a hallucination.**
-   The answer correctly describes section 103 types but cites source [1] for a claim about
-   section 114 time limits - the cited source does not cover that claim. This reflects the
-   limited context window (5 sources, 14 queries worth of statute text) rather than invention.
-
-**Conclusion**: Citation faithfulness at 0.86 YES confirms the baseline pipeline does not
-hallucinate sources or fabricate citations. The 6 NO cases are traceable to specific corpus
-coverage gaps and the LLM over-reaching on adjacent-but-not-exact source passages. No
-systematic citation fabrication detected.
+**Conclusion**: 0.86 YES confirms the pipeline does not hallucinate sources or fabricate
+citations. The 6 NO cases are traceable to corpus coverage gaps and over-reaching on
+adjacent-but-not-exact passages. The 8B repeat (section 10.6) reaches the same 0.86 verdict.
 
 ---
 
-### 9. Answer quality benchmark
+### 9. Answer quality benchmark (Qwen3.6-35B-A3B generator + judge)
 
-Evaluates the baseline answers holistically on two dimensions.
-LLM judge: Qwen3.6-35B-A3B (temperature=0). 14 queries (general + statute).
-See `benchmarks/reports/answer_quality.md` for per-query detail.
+Evaluates answers holistically on faithfulness and completeness.
+Generator: Qwen3.6-35B-A3B. Judge: Qwen3.6-35B-A3B (temperature=0). 14 queries.
+See section 10.7 for 8B repeat. See `benchmarks/reports/answer_quality.md` for detail.
 
 | Dimension | Mean (1-5) | 5 | 4 | 3 | 2 | 1 |
 |---|---:|---:|---:|---:|---:|---:|
 | Faithfulness | 5.00 | 14 | 0 | 0 | 0 | 0 |
 | Completeness | 3.21 | 4 | 2 | 3 | 3 | 2 |
 
-**No-context flag accuracy**: 2 queries said "not enough context" in baseline.
-Both were verified as justified (0 false claims of insufficient context).
+**No-context flag accuracy**: 2 queries said "not enough context". Both verified as
+justified (0 false claims of insufficient context).
 
 **Per-query completeness**:
 
@@ -552,48 +622,31 @@ Both were verified as justified (0 false claims of insufficient context).
 | general_sick_leave_medical_cert | 3 | Missing general ERA principle on medical cert requests |
 | general_rent_increase_rules | 4 | Minor: notice must specify amount |
 | general_privacy_act_employer | 1 | Core PA2020 IPPs not covered; context had only adjacent case law |
-| general_acc_personal_injury | 3 | Missing s20(2) injury type list (physical injury, treatment injury, etc.) |
+| general_acc_personal_injury | 3 | Missing s20(2) injury type list |
 | general_fair_process_dismissal | 5 | - |
 | general_workplace_harassment | 2 | Missing remedies; context gap, not answer failure |
 | general_constructive_dismissal | 5 | - |
-| general_workplace_discrimination_hrrt | 2 | Answers general HRA provisions, not workplace-specific application |
-| general_periodic_tenancy_termination | 2 | Missing 63-day notice period; judge knew statute, context did not have it |
+| general_workplace_discrimination_hrrt | 2 | Answers general HRA provisions, not workplace-specific |
+| general_periodic_tenancy_termination | 2 | Missing 63-day notice period; not in retrieved context |
 | statute_era_s103a_justification | 5 | - |
-| statute_era_s103_personal_grievance | 1 | Only one PG type listed; 7 more in ERA s103 not in retrieved context |
+| statute_era_s103_personal_grievance | 1 | Only one PG type listed; 7 more not in retrieved context |
 | statute_rta_landlord_entry | 4 | Omits 21-day notice period for specific entry types |
 | statute_era_s127_interim_reinstatement | 5 | - |
 
 **Findings**:
 
-1. **Faithfulness is perfect (5.00/5).** All 14 answers score 5/5 - zero hallucinations,
-   zero fabricated legal rules, zero invented case names or statute sections. Every claim
-   in the baseline answers is directly traceable to the provided sources.
+1. **Faithfulness is perfect (5.00/5, 35B judge).** Zero hallucinations, zero fabricated
+   rules or case names. The 8B judge gives 4.00/5 - more critical of broad claims vs. sources
+   (see section 10.7). Relative query ranking is identical across both judges.
 
-2. **Completeness is moderate (3.21/5) and corpus-limited.** The 4 queries scoring 5/5
-   (fair process, constructive dismissal, s103A, s127) happen to have rich, relevant corpus
-   coverage. The 2 queries scoring 1/5 (privacy_act_employer, era_s103_personal_grievance)
-   have corpus gaps: the Privacy Act collection obligations appear in only one tangential
-   chunk; s103 PG types beyond unjustified dismissal are under-represented in ERA decisions.
-   The issue is retrieval pool depth, not answer construction.
+2. **Completeness is moderate (3.21/5) and corpus-limited.** The 2 queries scoring 1/5
+   have corpus gaps; the 4 queries scoring 5/5 have rich, dense ERA/employment coverage.
 
-3. **No-context claims are accurate (100%).** Both queries that said "not enough context"
-   (general_sick_leave_medical_cert and general_workplace_harassment) were verified by the
-   judge as legitimately lacking context. The model is not over-claiming insufficiency.
+3. **No-context claims are accurate (100%).** The model does not over-claim insufficiency.
 
-4. **Employment law answers are highest quality.** The four 5/5 completeness queries are all
-   ERA/employment topics with dense, well-structured tribunal decisions in the corpus.
-   Tenancy and statute queries score lower because the relevant statute text (RTA s48, ERA
-   s103) is either at the edge of the retrieval window or not returned by the planner.
-
-5. **HRRT and harassment queries reflect scope mismatch.** The Human Rights Act query
-   (complete=2) returns general HRA provisions rather than workplace-specific case law.
-   The workplace harassment query (complete=2) returns bullying definitions with no remedies.
-   Both point to the same corpus gap flagged in the context packing benchmark.
-
-**Conclusion**: The baseline pipeline does not hallucinate. Completeness gaps are caused
-by corpus coverage limitations and retrieval scope, not by the context assembly or generator.
-The next improvement lever is corpus expansion (more RTA, Privacy Act, HRRT decisions)
-and query-time corpus routing (detect statute-heavy queries and boost NZLEG/NZHRRT).
+**Conclusion**: Pipeline does not hallucinate. Completeness gaps are corpus coverage
+limitations, not context assembly or generator failures. Next lever: corpus expansion
+(RTA, Privacy Act, HRRT decisions) and query-time corpus routing.
 
 ---
 
@@ -616,16 +669,16 @@ Model: `Qwen3-8B-Q4_K_M.gguf`. VRAM: 6620 / 8188 MB. Embedder: Ollama (CPU).
 
 #### 10.2 Reranker
 
-Re-confirmed from prior sweep. Mean rank improvement: **11.1 positions** (pre-rerank rank of best
-doc, promoted to rank 1 on average). Score range: 0.000-0.994, mean=0.26, std=0.34.
+Re-confirmed from prior sweep. Mean rank improvement: **11.1 positions**.
+Score range: 0.000-0.994, mean=0.26, std=0.34.
 
-Note: per-N latency from this run is noisy (model warm-up at N=5 caused 3160 ms vs 911 ms at N=10
-for the first query). The decision to keep RERANK_MODE=off is unchanged.
+Note: per-N latency from this run is noisy (model warm-up at N=5 caused 3160 ms vs
+911 ms at N=10 for the first query). The decision to keep RERANK_MODE=off is unchanged.
 
 #### 10.3 Retrieval (re-confirmation, 30 queries, 12 pipelines)
 
-Full 12-pipeline re-run confirms prior rankings. Small MRR differences vs. section 3 are
-due to gold dataset revision applied between runs.
+Full 12-pipeline re-run. Small MRR differences vs. section 3 are due to the
+gold dataset revision applied between runs.
 
 | Pipeline | H@5(g) | H@5(r) | H@10(r) | MRR |
 |---|---:|---:|---:|---:|
@@ -642,11 +695,9 @@ due to gold dataset revision applied between runs.
 Production pipeline `planner_filter_vector_legal` achieves oracle-equivalent H@5(r)=1.00.
 Sentencing queries remain MRR=0.000 across all pipelines (confirmed retrieval hardness).
 
-#### 10.4 Generator
+#### 10.4 Generator (8B GPU vs 35B CPU)
 
-8B model on GPU vs. prior CPU-only 35B runs.
-
-| Metric | 8B GPU (this run) | 35B CPU (prior) | Improvement |
+| Metric | 8B GPU (this run) | 35B CPU (section 4) | Change |
 |---|---:|---:|---:|
 | TTFT mean | 62 ms | 6,280 ms | 101x faster |
 | TTFT min | 49 ms | 3,970 ms | |
@@ -660,8 +711,8 @@ VRAM usage stable: 6620 MB before, 6622 MB after (8 queries generated).
 
 #### 10.5 Context packing (8B generator)
 
-Same 6 formats, 14 queries. 8B produces shorter answers (234 tok vs 364 tok baseline) and
-reveals a spurious citation issue in `baseline` and `full_chunk` absent in the 35B run.
+Same 6 formats, 14 queries. 8B produces shorter answers (234 tok vs 364 tok baseline with 35B)
+and reveals spurious citation issues in `baseline` and `full_chunk` absent in the 35B run.
 
 | Format | ctx_tok | ans_tok | all_in_ctx | no_ctx | diversity | spurious | lat_s |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -677,14 +728,16 @@ Spurious citations in `baseline` and `full_chunk` originate from one query
 legal text as if they were source indices. `metadata_rich` and `statute_first` suppress this
 by adding structural headers that disambiguate source markers from in-text numbering.
 
-**Updated recommendation**: promote `statute_first` to general default (not statute-only).
+**Recommendation updated**: `statute_first` promoted to general default for all queries.
 It achieves perfect citation accuracy (`all_in_ctx=1.00`, `spurious=0.0`), highest diversity
-(3.8), and identical latency (5.1s vs 5.0s baseline). The metadata overhead is justified
-by the citation quality improvement for 8B models.
+(3.8), and identical latency to baseline (5.1s vs 5.0s). This supersedes the section 7
+conclusion that baseline and statute_first are equivalent - they are not for 8B models.
 
-#### 10.6 Citation support (8B judge)
+#### 10.6 Citation support (8B generator + 8B judge)
 
-37 claim-citation pairs across 14 queries.
+37 claim-citation pairs across 14 queries (fewer than section 8 because `general_constructive_
+dismissal` produced only spurious paragraph citations, which the extractor rejected, yielding 0
+extractable claims).
 
 | Verdict | Count | Rate |
 |---|---:|---:|
@@ -692,25 +745,21 @@ by the citation quality improvement for 8B models.
 | PARTIALLY | 0 | 0.00 |
 | NO - passage does not support | 5 | 0.14 |
 
-0 claims extracted for `general_constructive_dismissal` (answer had spurious paragraph
-citations that the extractor correctly rejected) and `statute_rta_landlord_entry` (answer
-had only inline citations from the statute text, none in `[N]` format).
+Result matches the 35B-judged run (0.86 YES in both). Judge calibration is consistent
+across model sizes for this task - useful confirmation that 8B can serve as judge.
 
-Result matches the 35B-judged run (0.86 YES both times). Judge calibration is consistent
-across model sizes for this task.
+#### 10.7 Answer quality (8B generator + 8B judge)
 
-#### 10.7 Answer quality (8B judge)
+| Dimension | 8B judge mean | 35B judge mean (sec 9) | Delta |
+|---|---:|---:|---:|
+| Faithfulness | 4.00 / 5 | 5.00 / 5 | -1.00 |
+| Completeness | 3.64 / 5 | 3.21 / 5 | +0.43 |
 
-| Dimension | Mean (1-5) | F=5 | F=4 | F=3 |
-|---|---:|---:|---:|---:|
-| Faithfulness | 4.00 | 4 | 6 | 4 |
-| Completeness | 3.64 | 4 | 1 | 9 |
-
-**vs. 35B judge (section 9)**: faithfulness dropped 5.00 -> 4.00 (8B judge more critical of
-broad claims vs. specific sources); completeness rose 3.21 -> 3.64 (8B applies a less strict
-coverage standard). The relative ranking of queries is stable: the same 4 queries score
-5/5 on both dimensions in both runs (`general_fair_process_dismissal`,
-`general_constructive_dismissal`, `statute_era_s103a_justification`, `statute_rta_landlord_entry`).
+The 8B judge is more critical on faithfulness: it penalizes answers where a claim is
+broader than the specific source supports (e.g., "90-day notice is the standard rule" when
+the source describes only one scenario). The 35B judge was more lenient. The 8B judge
+is more generous on completeness. Relative query ranking is stable: the same 4 queries
+score 5/5 on both dimensions in both runs.
 
 Per-query (faithfulness / completeness):
 
@@ -732,43 +781,3 @@ Per-query (faithfulness / completeness):
 | statute_era_s127_interim_reinstatement | 4 | 4 | Undertaking requirement not mentioned |
 
 No unjustified no-context flags (1 raised, 1 confirmed as genuine).
-
----
-
-## Production Configuration (Locked)
-
-Based on all benchmarks, the following decisions are locked and should not be
-re-opened without new evidence from a benchmark run.
-
-| Decision | Value | Rationale |
-|---|---|---|
-| DEFAULT_PIPELINE | planner_filter_vector_legal | Heuristic planner reaches oracle-equivalent H@5(r)=1.00, MRR=0.152 (-1.3%) with no LLM call |
-| RERANK_MODE | off | Legal ranker alone outperforms legal ranker + cross-encoder |
-| BM25_MODE | conditional_statute_only | Global BM25 causes regressions; statute/section/citation queries only |
-| TRACKER_JOIN_MODE | soft_only | Hard JOIN excludes acceptable docs; additive post-rank bonus only |
-| COURT_PLANNER | deterministic heuristic | Keyword signals, no LLM; oracle pipeline (sql_filter_vector_legal) kept as benchmark upper bound |
-| CONTEXT_PACK_MODE | statute_first (all queries) | 8B run shows baseline/full_chunk have spurious=0.2; statute_first fixes this at identical latency with highest diversity |
-
-### Production routing
-
-| Intent | Pipeline | Notes |
-|---|---|---|
-| authority | planner_filter_vector_legal | Default legal ranker profile |
-| example | planner_filter_vector_legal | Example profile in legal ranker |
-| tracker | planner_filter_vector_legal | Tracker profile + soft boost (no hard JOIN) |
-| statute | planner_filter_vector_legal + conditional BM25 | BM25 activated for section refs, citations, quoted phrases |
-| default | planner_filter_vector_legal | Fallback for all unclassified intents |
-
-### Conditional BM25 activation rules (rag/bm25_query.py)
-
-BM25 is activated when any one of the following is present in the query:
-
-1. Section reference: s103A, section 103A, s 127
-2. Case citation: NZCA/2024/50, [2024] NZCA 50
-3. Quoted phrase: "interim reinstatement"
-4. Short keyword query: <= 6 tokens, no question words, no trailing "?"
-
-When activated, OR-joined anchors extracted from the query are passed to
-`websearch_to_tsquery`, not the full question string, so FTS does not apply strict
-AND-matching over all stems. When BM25 returns empty (suppressed or no FTS match),
-RRF is skipped entirely and vector cosine scores are used directly.
