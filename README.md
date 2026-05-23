@@ -1,8 +1,9 @@
 # nz-legal-rag
 
-On-premise RAG pipeline for New Zealand legal research - ingesting 500,000+ court
-decisions into a local vector database with structured trackers comparable to Westlaw NZ,
-running entirely on local hardware.
+On-premise RAG pipeline for New Zealand legal research - designed to scale toward
+500,000+ public legal decisions, with the current benchmark corpus covering 23,561
+documents and 982,361 chunks. Structured trackers comparable to Westlaw NZ, running
+entirely on local hardware.
 
 This project explores an on-premise RAG architecture for privacy-sensitive legal workflows,
 where data residency, legal professional privilege, and operational control are important
