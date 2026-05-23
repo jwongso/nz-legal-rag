@@ -40,3 +40,19 @@ CREATE INDEX IF NOT EXISTS idx_sec_chunks_fts
 
 -- secondary_citations populated in Phase 2
 -- secondary_concepts populated in Phase 2
+
+-- Phase 2: citation linking (run after Phase 1 tables exist)
+CREATE TABLE IF NOT EXISTS secondary_citations (
+    id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    secondary_document_id uuid NOT NULL REFERENCES secondary_documents(id) ON DELETE CASCADE,
+    secondary_chunk_id    uuid NOT NULL REFERENCES secondary_chunks(id) ON DELETE CASCADE,
+    raw_citation          text NOT NULL,
+    normalised_citation   text NOT NULL,       -- COURT/YEAR/NUM or NZLEG/ABBREV/sN
+    citation_type         text NOT NULL,       -- case | legislation
+    target_document_id    integer REFERENCES documents(id),   -- NULL if not found in corpus
+    confidence            real NOT NULL DEFAULT 1.0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sec_cit_doc    ON secondary_citations(secondary_document_id);
+CREATE INDEX IF NOT EXISTS idx_sec_cit_target ON secondary_citations(target_document_id);
+CREATE INDEX IF NOT EXISTS idx_sec_cit_norm   ON secondary_citations(normalised_citation);

@@ -1,7 +1,8 @@
-"""Secondary source ingestion pipeline (Phase 1).
+"""Secondary source ingestion pipeline (Phase 1 + 2).
 
 Reads files from data/inbox/, parses them, chunks them, embeds into the
-nz_legal_secondary Qdrant collection, and records everything in PostgreSQL.
+nz_legal_secondary Qdrant collection, records everything in PostgreSQL, then
+runs citation extraction to link secondary chunks to primary corpus documents.
 
 Files are deduplicated by SHA-256 hash - dropping the same PDF twice is a no-op.
 Processed files are moved to data/processed/; failed files to data/failed/.
@@ -27,6 +28,7 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 
 import config
 from ingest.secondary_chunker import chunk_secondary
+from ingest.secondary_citations import process_document as extract_citations
 from ingest.secondary_parser import parse
 from rag.embedder import Embedder
 
@@ -181,8 +183,13 @@ def ingest_file(
 
     client.upsert(collection_name=_SECONDARY_COLLECTION, points=points)
     _update_chunk_qdrant_ids(conn, doc_id, idx_to_pid)
-
     print(f"  Upserted {len(points)} vectors to '{_SECONDARY_COLLECTION}'")
+
+    # Phase 2: citation extraction
+    cit = extract_citations(conn, doc_id)
+    print(f"  Citations: {cit['total_citations']} found, "
+          f"{cit['linked_to_corpus']} linked to primary corpus")
+
     return True
 
 
