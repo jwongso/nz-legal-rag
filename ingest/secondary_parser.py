@@ -38,16 +38,43 @@ def _guess_title(text: str, stem: str) -> str:
     return stem
 
 
-def _parse_pdf(path: Path) -> ParsedDoc:
-    import fitz  # pymupdf
+_OCR_CHARS_PER_PAGE_THRESHOLD = 200  # below this avg triggers OCR fallback
+
+
+def _ocr_pdf(path: Path) -> tuple[list[str], int]:
+    """Render each page to image and OCR it. Returns (page_texts, page_count)."""
+    import fitz
+    import pytesseract
+    from PIL import Image
+    import io
 
     doc = fitz.open(str(path))
     pages = []
     for page in doc:
-        pages.append(page.get_text())
+        pix = page.get_pixmap(dpi=200)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        pages.append(pytesseract.image_to_string(img, lang="eng"))
+    doc.close()
+    return pages, len(pages)
+
+
+def _parse_pdf(path: Path) -> ParsedDoc:
+    import fitz  # pymupdf
+
+    doc = fitz.open(str(path))
+    pages = [page.get_text() for page in doc]
+    page_count = len(pages)
     doc.close()
 
     text = "\n\n".join(pages).strip()
+    avg_chars = len(text) / max(page_count, 1)
+    parse_method = "pymupdf"
+
+    if avg_chars < _OCR_CHARS_PER_PAGE_THRESHOLD:
+        ocr_pages, page_count = _ocr_pdf(path)
+        text = "\n\n".join(ocr_pages).strip()
+        parse_method = "pymupdf+ocr"
+
     title = _guess_title(text, path.stem)
     year = _guess_year(text)
     return ParsedDoc(
@@ -55,8 +82,8 @@ def _parse_pdf(path: Path) -> ParsedDoc:
         title=title,
         authors=[],
         publication_year=year,
-        parse_method="pymupdf",
-        page_count=len(pages),
+        parse_method=parse_method,
+        page_count=page_count,
     )
 
 

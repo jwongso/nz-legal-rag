@@ -17,6 +17,8 @@ dependencies = [
     "pydantic>=2.7",
     "sentence-transformers>=3.0",
     "pypdf>=4.0",
+    "pytesseract>=0.3",
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
