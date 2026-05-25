@@ -1,9 +1,8 @@
 # nz-legal-rag
 
-On-premise RAG pipeline for New Zealand legal research - designed to scale toward
-500,000+ public legal decisions, with the current benchmark corpus covering 23,561
-documents and 982,361 chunks. Structured trackers comparable to Westlaw NZ, running
-entirely on local hardware.
+On-premise RAG pipeline for New Zealand legal research - covering 2.8 million+
+decision chunks across 13 NZ courts and tribunals, with structured trackers comparable
+to Westlaw NZ, running entirely on local hardware.
 
 This project explores an on-premise RAG architecture for privacy-sensitive legal workflows,
 where data residency, legal professional privilege, and operational control are important
@@ -91,8 +90,9 @@ no court filter (H@5(r) dropped to 0.40).
 +--------------------+               |  :5432      |
                                      +-------------+
 
-  Embeddings (nomic-embed-text-v1.5) and reranker (bge-reranker-v2-m3)
-  run in-process via sentence-transformers on CPU. No Ollama required.
+  Embeddings (nomic-embed-text-v1.5) run in-process via sentence-transformers.
+  Auto-selects CUDA if a GPU with 512MB+ free VRAM is available, falls back to CPU.
+  Reranker (bge-reranker-v2-m3) same auto-selection. No Ollama required.
 
 
 Data ingestion:
@@ -125,14 +125,30 @@ Data ingestion:
 
 | Source | Content | Courts indexed |
 |---|---|---|
-| NZLII (nzlii.org) | NZ legal information institute - free public access | NZSC, NZCA, NZHC, NZERA, NZEmpC, NZTT |
+| NZLII (nzlii.org) | NZ legal information institute - free public access | NZSC, NZCA, NZHC, NZERA, NZEmpC, NZEnvC, NZACC, NZCorC, NZFC, NZLCDT, NZHRRT, NZREADT, NZTT |
 
 NZLII hosts HTML decisions for most courts. Tenancy Tribunal (NZTT) decisions
 are PDF-only on NZLII - the scraper fetches and extracts these via pypdf.
 
-Current coverage: **2020-2026** across all courts (NZCA fully indexed from 2020).
-982,000+ chunks indexed across 23,500+ documents. All sources are publicly available.
-No proprietary data required.
+**Current coverage:**
+
+| Court | Coverage |
+|---|---|
+| NZCA | 1985-2026 (full history) |
+| NZHC | 2000-2021 |
+| NZSC | 2000-2021 |
+| NZERA | 2000-2021 |
+| NZEmpC | 2000-2021 |
+| NZEnvC | 1996-2021 |
+| NZACC | 1996-2021 |
+| NZCorC | 1996-2021 |
+| NZFC | 1996-2021 |
+| NZLCDT | 1996-2021 |
+| NZHRRT | 1996-2021 |
+| NZREADT | 1996-2021 |
+| NZTT | 2022-2024 |
+
+2.8M+ chunks indexed. All sources are publicly available. No proprietary data required.
 
 ---
 
@@ -667,17 +683,15 @@ Available tools:
 
 This project runs on a single machine with a consumer GPU. No Blackwell required.
 
-Current inference: llama-server with Qwen3.6-35B-A3B-UD-Q5_K_M (Unsloth Dynamic 5-bit,
-MTP-capable). 10 GPU layers, 4096 context.
+Current inference: llama-server with Qwen3-8B-Q4_K_M, fully on GPU (RTX 4060 Laptop,
+8GB VRAM), 12288 context, ~44 tok/s generation.
 
-Embeddings: nomic-embed-text-v1.5 via sentence-transformers, running in-process on CPU.
-No Ollama server required. Thread count is capped at 16 during ingest to leave headroom
-for the inference server. Not a bottleneck at the scales the NZ legal corpus requires
-(NZLII has ~50k decisions total).
+Embeddings: nomic-embed-text-v1.5 via sentence-transformers. Auto-selects CUDA at
+startup (rag/device.py) - uses GPU for bulk ingest, falls back to CPU at query time
+when llama-server occupies VRAM. No Ollama server required.
 
-Upcoming: GMKtec EVO-T1 mini PC (Intel Core Ultra 9 285H, 64GB DDR5) + WD Blue SN5000
-2TB NVMe. The Arc 140T iGPU shares system RAM as VRAM, enabling larger model context
-via SYCL/oneAPI. Planned as 24/7 always-on inference node running Gentoo Linux.
+Services managed via systemd --user: llama-server, nz-legal-api (uvicorn), and
+nz-legal-tunnel (Cloudflare). All start automatically on login.
 
 ---
 
@@ -689,7 +703,7 @@ via SYCL/oneAPI. Planned as 24/7 always-on inference node running Gentoo Linux.
 - [x] PDF extraction for Tenancy Tribunal decisions
 - [x] Section-aware legal document chunker (120-word windows, 20-word minimum)
 - [x] Qdrant ingestion pipeline with metadata filtering and deterministic UUID5 IDs
-- [x] 182,000+ chunks indexed across 13 courts
+- [x] 2.8M+ chunks indexed across 13 courts (full historical backfill 1985/1996/2000-2021)
 - [x] RAG pipeline with citation grounding
 - [x] MCP server for Claude Code / Claude Desktop
 - [x] FastAPI REST interface with web chat UI
@@ -708,7 +722,12 @@ via SYCL/oneAPI. Planned as 24/7 always-on inference node running Gentoo Linux.
 - [x] Developer retrieval trace: per-stage latency breakdown (Phase 3)
 - [x] Citation verification: grounding check without extra LLM call (Phase 3)
 - [x] DEV mode in UI: collapsible trace panel per answer
-- [x] Automated test suite: 114 tests covering API, retrieval, quality, and latency
+- [x] Automated test suite: 145 tests covering API, retrieval, quality, and latency
+- [x] Secondary source ingestion pipeline (PDF/DOCX/TXT law review articles) with confidence-scored citation extraction, LLM citation review, and structured document analysis
+- [x] GPU-aware embedder: auto-selects CUDA/CPU at instantiation via rag/device.py
+- [x] Crash-resumable batch ingest with per-court-year progress tracking
+- [x] systemd --user services for API server, Cloudflare tunnel, and llama-server
+- [x] CI/CD pipeline status checker (ingest/pipeline_status.py) with exit codes and --json mode
 - [x] Similar Cases With Opposite Outcomes (`POST /contrasting-cases`) - contrastive semantic retrieval split by structured outcome (Phase 4)
 - [x] LLM extraction backfill pipeline (`ingest/llm_extract_pipeline.py`) - fills structured fields the regex pipelines miss (compensation, reinstatement, aggravating/mitigating factors)
 - [x] Intent-aware legal ranker (`rag/legal_ranker.py`) - four profiles (authority, example, tracker, statute), MRR +37% vs unranked baseline

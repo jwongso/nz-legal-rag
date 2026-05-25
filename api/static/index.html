@@ -715,7 +715,7 @@
   <div id="chat">
     <div class="empty-state" id="empty">
       <h2>Ask a legal question</h2>
-      <p>Searches 980,000+ NZ court decision chunks across 14 courts (NZHC, NZCA, NZSC, NZFC, NZEnvC, NZERA, NZACC, NZTT and more) 1985-2026, plus NZ legislation. Answers include citations to source decisions.</p>
+      <p>Searches 2.8 million+ NZ court decision chunks across 13 courts (NZHC, NZCA, NZSC, NZERA, NZEmpC, NZEnvC, NZACC, NZFC, NZTT and more) covering 1985-2026. Answers include citations to source decisions.</p>
       <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:0.82rem;color:#555;cursor:pointer;">
         <input type="checkbox" id="disclaimer-ack" style="margin-top:2px;flex-shrink:0;">
         I understand this is a research prototype, not legal advice, and I will not enter confidential or identifying information about any real person or legal matter.
@@ -1037,7 +1037,7 @@
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px;">
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
-        <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">982k+</div>
+        <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">2.8M+</div>
         <div style="font-size:0.8rem;color:#666;">decision chunks indexed</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
@@ -1046,7 +1046,7 @@
       </div>
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
         <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">1985-2026</div>
-        <div style="font-size:0.8rem;color:#666;">NZCA decision coverage</div>
+        <div style="font-size:0.8rem;color:#666;">coverage (NZCA full history)</div>
       </div>
       <div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
         <div style="font-size:1.6rem;font-weight:700;color:#1a1a2e;">&lt;1s</div>
@@ -1060,7 +1060,7 @@
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">What this demonstrates</h3>
     <p style="color:#555;margin-bottom:8px;">An on-premise RAG architecture for privacy-sensitive legal workflows, where data residency, legal professional privilege, and operational control are important design constraints.</p>
-    <p style="color:#555;margin-bottom:24px;"><strong>Tech stack:</strong> Python, FastAPI, PostgreSQL, Qdrant, sentence-transformers, llama.cpp/Ollama, NZLII ingestion pipeline, intent-aware legal ranker, heuristic court planner, conditional BM25, REST API, MCP server integration, domain-specific retrieval benchmark suite (30-query gold dataset, MRR / Hit@K metrics).</p>
+    <p style="color:#555;margin-bottom:24px;"><strong>Tech stack:</strong> Python, FastAPI, PostgreSQL, Qdrant, sentence-transformers (nomic-embed-text-v1.5 + Qwen3-Embedding-0.6B, GPU auto-selected), llama.cpp (Qwen3-8B Q4_K_M), NZLII ingestion pipeline, intent-aware legal ranker, heuristic court planner, conditional BM25, REST API, MCP server integration, domain-specific retrieval benchmark suite (30-query gold dataset, MRR / Hit@K metrics).</p>
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">Architecture</h3>
     <pre style="background:#1a1a2e;color:#e2e8f0;padding:16px;border-radius:10px;font-size:0.8rem;overflow-x:auto;margin-bottom:24px;">Ingestion pipeline:
@@ -1116,7 +1116,7 @@ Query pipeline:
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">Known limitations</h3>
     <ul style="color:#555;font-size:0.88rem;padding-left:20px;margin-bottom:24px;line-height:1.8;">
-      <li>Full coverage currently focuses on NZCA 1985-2026; other courts have partial coverage.</li>
+      <li>NZCA is indexed 1985-2026 (full history). All other courts cover 1996-2021 or 2000-2021. 2022-2024 is present for all courts via earlier partial ingestion.</li>
       <li>Pre-2000 decisions sourced from scanned PDFs - OCR quality varies.</li>
       <li>Answers depend on source availability and chunking quality; some complex multi-issue cases may be under-represented.</li>
       <li>Research prototype only - not a replacement for professional legal advice.</li>
