@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
+import httpx
+import psycopg2
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -131,7 +133,49 @@ async def search(
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "collection": config.QDRANT_COLLECTION}
+    services: dict = {}
+
+    # Qdrant
+    try:
+        from qdrant_client import QdrantClient
+        qc = QdrantClient(url=config.QDRANT_URL, timeout=3)
+        info = qc.get_collection(config.QDRANT_COLLECTION)
+        services["qdrant"] = {"status": "ok", "vectors": info.points_count}
+    except Exception as e:
+        services["qdrant"] = {"status": "down", "error": str(e)[:80]}
+
+    # PostgreSQL
+    try:
+        conn = psycopg2.connect(dbname="nz_legal", connect_timeout=3)
+        conn.close()
+        services["postgres"] = {"status": "ok"}
+    except Exception as e:
+        services["postgres"] = {"status": "down", "error": str(e)[:80]}
+
+    # LLM server
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(f"{config.LLM_BASE_URL}/models")
+            r.raise_for_status()
+            models = r.json().get("data", [])
+            model_id = models[0]["id"] if models else config.LLM_MODEL
+        services["llm"] = {"status": "ok", "model": model_id, "url": config.LLM_BASE_URL}
+    except Exception:
+        services["llm"] = {"status": "down", "url": config.LLM_BASE_URL}
+
+    # Embedder (always in-process)
+    services["embedder"] = {"status": "ok", "model": config.EMBED_MODEL}
+
+    overall = "ok" if all(s["status"] == "ok" for s in services.values()) else "degraded"
+    return {
+        "status": overall,
+        "services": services,
+        "features": {
+            "search":   services["qdrant"]["status"] == "ok",
+            "ask":      services["llm"]["status"] == "ok",
+            "trackers": services["postgres"]["status"] == "ok",
+        },
+    }
 
 
 class NotableRequest(BaseModel):

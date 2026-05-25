@@ -687,6 +687,10 @@
 </head>
 <body>
 
+<div id="llm-banner" style="display:none;background:#744210;color:#fff;font-size:0.8rem;padding:8px 24px;display:none;align-items:center;gap:12px;flex-shrink:0;">
+  <span>&#9889;</span>
+  <span><strong>LLM server offline.</strong> Search and trackers are available. The Ask tab cannot generate answers until the LLM server is restarted.</span>
+</div>
 <div id="legal-banner" style="background:#7b341e;color:#fff;font-size:0.8rem;padding:8px 24px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
   <span>&#9888;</span>
   <span><strong>Research prototype only.</strong> Not legal advice. This tool retrieves and summarises public legal sources. It is not a lawyer or law firm and must not be relied on for legal decisions. Do not enter confidential or identifying information. For advice about your situation, consult a qualified New Zealand lawyer.</span>
@@ -1819,6 +1823,46 @@ Query pipeline:
     msg.appendChild(btn);
     msg.appendChild(panel);
   }
+
+  // ---------------------------------------------------------------------------
+  // Health polling
+  // ---------------------------------------------------------------------------
+  let _llmOnline = true;
+
+  async function checkHealth() {
+    try {
+      const res  = await fetch('/health');
+      const data = await res.json();
+      const llmOk = data.features?.ask === true;
+
+      if (llmOk !== _llmOnline) {
+        _llmOnline = llmOk;
+        updateLLMStatus(llmOk);
+      }
+    } catch (_) {}
+  }
+
+  function updateLLMStatus(online) {
+    const banner  = document.getElementById('llm-banner');
+    const sendBtn = document.getElementById('send');
+    const input   = document.getElementById('input');
+
+    banner.style.display = online ? 'none' : 'flex';
+
+    if (sendBtn) {
+      sendBtn.disabled = !online;
+      sendBtn.title    = online ? '' : 'LLM server is offline';
+    }
+    if (input) {
+      input.placeholder = online
+        ? 'Ask a question about NZ law...'
+        : 'LLM offline - answers unavailable. Search and trackers still work.';
+    }
+  }
+
+  // Check on load then every 30 seconds
+  checkHealth();
+  setInterval(checkHealth, 30000);
 </script>
 </body>
 </html>
