@@ -11,17 +11,9 @@ Supported models and their prompt strategies:
   Qwen/Qwen3-Embedding-0.6B       query via prompt_name="query"  doc has no prefix
 """
 
-import torch
 from sentence_transformers import SentenceTransformer
 
-_MIN_FREE_VRAM_MB = 512
-
-
-def _select_device() -> str:
-    if not torch.cuda.is_available():
-        return "cpu"
-    free_bytes, _ = torch.cuda.mem_get_info()
-    return "cuda" if free_bytes >= _MIN_FREE_VRAM_MB * 1024 * 1024 else "cpu"
+from rag.device import select_device
 
 # Per-model config: query_prefix/doc_prefix prepended to text before encoding.
 # query_prompt_name: uses the model's built-in prompt template instead of a prefix.
@@ -62,7 +54,7 @@ class Embedder:
         self._query_prefix: str = cfg.get("query_prefix", "")
         self._doc_prefix: str = cfg.get("doc_prefix", "")
         self._query_prompt_name: str | None = cfg.get("query_prompt_name")
-        resolved_device = device or _select_device()
+        resolved_device = device or select_device()
         self._model = SentenceTransformer(
             self._model_name,
             trust_remote_code=cfg.get("trust_remote_code", False),

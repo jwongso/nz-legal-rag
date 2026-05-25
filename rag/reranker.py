@@ -12,12 +12,13 @@ for legal text where boilerplate confuses cosine similarity.
 from sentence_transformers import CrossEncoder
 
 import config
+from rag.device import select_device
 from rag.retriever import SearchResult
 
 
 class Reranker:
     def __init__(self) -> None:
-        self._model = CrossEncoder(config.RERANKER_MODEL, max_length=512, device="cpu")
+        self._model = CrossEncoder(config.RERANKER_MODEL, max_length=512, device=select_device())
 
     def rerank(self, query: str, hits: list[SearchResult], top_k: int) -> list[SearchResult]:
         if not hits:
