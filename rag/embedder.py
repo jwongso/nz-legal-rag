@@ -11,7 +11,10 @@ Supported models and their prompt strategies:
   Qwen/Qwen3-Embedding-0.6B       query via prompt_name="query"  doc has no prefix
 """
 
+import torch
 from sentence_transformers import SentenceTransformer
+
+_AUTO_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Per-model config: query_prefix/doc_prefix prepended to text before encoding.
 # query_prompt_name: uses the model's built-in prompt template instead of a prefix.
@@ -42,7 +45,7 @@ _DEFAULT_MODEL = "nomic-ai/nomic-embed-text-v1.5"
 
 
 class Embedder:
-    def __init__(self, model_name: str | None = None, device: str = "cpu") -> None:
+    def __init__(self, model_name: str | None = None, device: str = _AUTO_DEVICE) -> None:
         self._model_name = model_name or _DEFAULT_MODEL
         cfg = _MODEL_CONFIGS.get(self._model_name, {
             "query_prefix": "",
