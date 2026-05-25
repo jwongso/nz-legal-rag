@@ -14,7 +14,14 @@ Supported models and their prompt strategies:
 import torch
 from sentence_transformers import SentenceTransformer
 
-_AUTO_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+_MIN_FREE_VRAM_MB = 512
+
+
+def _select_device() -> str:
+    if not torch.cuda.is_available():
+        return "cpu"
+    free_bytes, _ = torch.cuda.mem_get_info()
+    return "cuda" if free_bytes >= _MIN_FREE_VRAM_MB * 1024 * 1024 else "cpu"
 
 # Per-model config: query_prefix/doc_prefix prepended to text before encoding.
 # query_prompt_name: uses the model's built-in prompt template instead of a prefix.
@@ -45,7 +52,7 @@ _DEFAULT_MODEL = "nomic-ai/nomic-embed-text-v1.5"
 
 
 class Embedder:
-    def __init__(self, model_name: str | None = None, device: str = _AUTO_DEVICE) -> None:
+    def __init__(self, model_name: str | None = None, device: str | None = None) -> None:
         self._model_name = model_name or _DEFAULT_MODEL
         cfg = _MODEL_CONFIGS.get(self._model_name, {
             "query_prefix": "",
@@ -55,10 +62,11 @@ class Embedder:
         self._query_prefix: str = cfg.get("query_prefix", "")
         self._doc_prefix: str = cfg.get("doc_prefix", "")
         self._query_prompt_name: str | None = cfg.get("query_prompt_name")
+        resolved_device = device or _select_device()
         self._model = SentenceTransformer(
             self._model_name,
             trust_remote_code=cfg.get("trust_remote_code", False),
-            device=device,
+            device=resolved_device,
         )
 
     @property
