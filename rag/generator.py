@@ -32,14 +32,14 @@ Rules:
 
 
 class Generator:
-    def __init__(self) -> None:
+    def __init__(self, system_prompt: str | None = None) -> None:
         self._client = httpx.AsyncClient(
             base_url=config.LLM_BASE_URL,
             timeout=120,
         )
+        self._system_prompt = system_prompt if system_prompt is not None else _SYSTEM_PROMPT
 
     async def generate(self, question: str, context_chunks: list[str], sources: list[dict]) -> str:
-        # Truncate each chunk to stay within VRAM budget (4096 ctx, 8GB GPU)
         truncated = [c[:1500] for c in context_chunks]
         context_block = "\n\n---\n\n".join(
             f"[S{i + 1}] {chunk}" for i, chunk in enumerate(truncated)
@@ -67,7 +67,7 @@ class Generator:
         payload = {
             "model": config.LLM_MODEL,
             "messages": [
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": user_message},
             ],
             "max_tokens": config.LLM_MAX_TOKENS,
