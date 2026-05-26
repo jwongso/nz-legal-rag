@@ -42,16 +42,16 @@ class Generator:
         # Truncate each chunk to stay within VRAM budget (4096 ctx, 8GB GPU)
         truncated = [c[:600] for c in context_chunks]
         context_block = "\n\n---\n\n".join(
-            f"[{i + 1}] {chunk}" for i, chunk in enumerate(truncated)
+            f"[S{i + 1}] {chunk}" for i, chunk in enumerate(truncated)
         )
         source_list = "\n".join(
-            f"  [{i + 1}] {s.get('title', 'Unknown')} ({s.get('court_name', '')}, {s.get('date', '')})"
+            f"  [S{i + 1}] {s.get('title', 'Unknown')} ({s.get('court_name', '')}, {s.get('date', '')})"
             f" - {s.get('url', '')}"
             for i, s in enumerate(sources)
         )
 
         source_header = "\n".join(
-            f"  [{i + 1}] {s.get('title', 'Unknown')} | {s.get('court_name', '')} | "
+            f"  [S{i + 1}] {s.get('title', 'Unknown')} | {s.get('court_name', '')} | "
             f"{s.get('date', '')} | {s.get('url', '')}"
             for i, s in enumerate(sources)
         )
@@ -60,8 +60,8 @@ class Generator:
             f"Source index:\n{source_header}\n\n"
             f"Context documents (numbered to match source index):\n\n{context_block}\n\n"
             f"---\n\nQuestion: {question}\n\n"
-            f"Answer using only the context above. Cite sources with [N] notation "
-            f"matching the source index. After your answer, list every source you cited."
+            f"Answer using only the context above. Cite sources with [SN] notation "
+            f"(e.g. [S1], [S2]) matching the source index. Do not invent other citation formats."
         )
 
         payload = {
@@ -83,8 +83,8 @@ class Generator:
         resp.raise_for_status()
         answer = resp.json()["choices"][0]["message"]["content"].strip()
 
-        # Append formatted source list if not already present
-        if source_list and "Sources:" not in answer and "Source:" not in answer:
+        # Always append the authoritative source list - overrides any LLM-generated one
+        if source_list:
             answer += f"\n\nSources:\n{source_list}"
 
         return answer
