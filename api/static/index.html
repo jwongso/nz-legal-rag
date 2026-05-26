@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NZ Legal RAG</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="shortcut icon" href="/static/favicon.svg">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1064,7 +1066,7 @@
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">What this demonstrates</h3>
     <p style="color:#555;margin-bottom:8px;">An on-premise RAG architecture for privacy-sensitive legal workflows, where data residency, legal professional privilege, and operational control are important design constraints.</p>
-    <p style="color:#555;margin-bottom:24px;"><strong>Tech stack:</strong> Python, FastAPI, PostgreSQL, Qdrant, sentence-transformers (nomic-embed-text-v1.5 + Qwen3-Embedding-0.6B, GPU auto-selected), llama.cpp (Qwen3-8B Q4_K_M), NZLII ingestion pipeline, intent-aware legal ranker, heuristic court planner, conditional BM25, REST API, MCP server integration, domain-specific retrieval benchmark suite (30-query gold dataset, MRR / Hit@K metrics).</p>
+    <p style="color:#555;margin-bottom:24px;"><strong>Tech stack:</strong> Python / FastAPI (async REST API, pipeline orchestration) &mdash; C++ / CUDA (llama.cpp with CUDA backend, Qwen3-8B Q4_K_M, full GPU layer offload to RTX 4060 8 GB) &mdash; PyTorch + CUDA (dynamic device selection at runtime via <code>rag/device.py</code>: nomic-embed-text-v1.5 + Qwen3-Embedding-0.6B embedders, GPU auto-selected if VRAM free &ge; 512 MB, CPU fallback) &mdash; PostgreSQL (structured metadata, SQL pre-filtering) &mdash; Qdrant (vector index, 2.8 M+ vectors) &mdash; NZLII ingestion pipeline, intent-aware legal ranker, heuristic court planner, conditional BM25, MCP server integration, domain-specific retrieval benchmark suite (30-query gold dataset, MRR / Hit@K metrics).</p>
 
     <h3 style="font-size:1rem;color:#1a1a2e;margin-bottom:10px;">Architecture</h3>
     <pre style="background:#1a1a2e;color:#e2e8f0;padding:16px;border-radius:10px;font-size:0.8rem;overflow-x:auto;margin-bottom:24px;">Ingestion pipeline:
@@ -1072,7 +1074,8 @@
     -> HTML/PDF parsing + PDF fallback for pre-2000 scanned decisions
     -> metadata extraction (court, year, parties, citations)
     -> section-aware chunking (120-word windows)
-    -> sentence-transformer embeddings (nomic-embed-text-v1.5)
+    -> sentence-transformer embeddings (nomic-embed-text-v1.5 / Qwen3-Embedding-0.6B,
+       CUDA-accelerated via PyTorch dynamic device selection)
     -> Qdrant vector index (deterministic UUID5 point IDs, idempotent)
     -> PostgreSQL relational store (documents, chunks, sentencing_cases,
        employment_cases - structured metadata for filtered search)
@@ -1093,7 +1096,8 @@ Query pipeline:
     -> conditional BM25 (activated only for section refs, citations, quoted
        phrases, short keyword queries): OR-joined anchor extraction avoids
        AND-strictness. RRF-fused with vector results when active.
-    -> context assembly + local LLM generation (llama.cpp/Ollama)
+    -> context assembly + GPU-accelerated LLM generation (llama.cpp C++ with CUDA backend,
+       Qwen3-8B Q4_K_M, full layer offload to RTX 4060 8 GB)
     -> citation verifier (regex, no extra LLM call)
     -> citation-backed answer with source URLs</pre>
 
