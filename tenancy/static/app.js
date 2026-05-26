@@ -138,6 +138,14 @@ function resetFeedback() {
 }
 
 async function submitFeedback(rating) {
+  if (currentRating === rating) {
+    // Clicking same button again cancels the selection
+    currentRating = null;
+    thumbUp.classList.remove('active');
+    thumbDown.classList.remove('active');
+    feedbackComment.style.display = 'none';
+    return;
+  }
   currentRating = rating;
   thumbUp.classList.toggle('active', rating === 1);
   thumbDown.classList.toggle('active', rating === -1);
