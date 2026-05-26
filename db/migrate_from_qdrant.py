@@ -247,7 +247,8 @@ def run(
             for case_id, chunk_idx, section, text, tokens, qid in chunk_rows:
                 doc_id = seen_cases.get(case_id)
                 if doc_id:
-                    resolved_chunks.append((doc_id, chunk_idx, section, text, tokens, qid))
+                    clean_text = text.replace('\x00', '') if text else text
+                    resolved_chunks.append((doc_id, chunk_idx, section, clean_text, tokens, qid))
 
             psycopg2.extras.execute_batch(cur, """
                 INSERT INTO chunks
