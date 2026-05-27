@@ -111,16 +111,16 @@ function renderSources(sources) {
     return;
   }
   sourcesList.innerHTML = sources.map((s, i) => {
-    const title = s.title || 'Unknown decision';
-    const meta = [s.court_name, s.date].filter(Boolean).join(' - ');
+    const court = s.court_name || 'Tenancy Tribunal';
+    const date = s.date || '';
+    const label = date ? `${court} Decision - ${date}` : `${court} Decision`;
     const rawUrl = s.url || '';
     const url = rawUrl.startsWith('https://') ? rawUrl : '#';
     return `
       <div class="source-card">
         <span class="source-num">S${i + 1}</span>
         <div class="source-info">
-          <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>
-          <span class="source-meta">${escapeHtml(meta)}</span>
+          <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>
         </div>
       </div>`;
   }).join('');
@@ -262,6 +262,34 @@ form.addEventListener('submit', async (e) => {
 document.getElementById('ask-another-btn').addEventListener('click', resetToForm);
 document.getElementById('retry-btn').addEventListener('click', resetToForm);
 
+// ---- Disclaimer modal ----
+const _AGREED_KEY = 'nzth_agreed_v1';
+
+function initDisclaimer() {
+  if (localStorage.getItem(_AGREED_KEY)) return;
+  const modal = document.getElementById('disclaimer-modal');
+  const checkbox = document.getElementById('disclaimer-checkbox');
+  const agreeBtn = document.getElementById('disclaimer-agree');
+  modal.classList.add('visible');
+  document.body.classList.add('modal-open');
+  checkbox.addEventListener('change', () => {
+    agreeBtn.disabled = !checkbox.checked;
+  });
+  agreeBtn.addEventListener('click', () => {
+    localStorage.setItem(_AGREED_KEY, '1');
+    modal.classList.remove('visible');
+    document.body.classList.remove('modal-open');
+  });
+}
+
 // ---- Init ----
 pollQueue();
 setInterval(pollQueue, 15000);
+initDisclaimer();
+
+document.getElementById('show-terms').addEventListener('click', (e) => {
+  e.preventDefault();
+  const modal = document.getElementById('disclaimer-modal');
+  modal.classList.add('visible');
+  document.body.classList.add('modal-open');
+});

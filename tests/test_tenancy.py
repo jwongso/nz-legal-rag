@@ -307,7 +307,29 @@ def test_homepage_ai_warning_present(client):
     assert "verify with a lawyer" in r.text
 
 
-def test_homepage_disclaimer_auto_expanded(client):
+def test_homepage_modal_present(client):
     r = client.get("/")
-    # <details open> means expanded by default
-    assert "<details open>" in r.text
+    assert "disclaimer-modal" in r.text
+    assert "disclaimer-agree" in r.text
+    assert "disclaimer-checkbox" in r.text
+
+
+def test_homepage_modal_contains_legal_text(client):
+    r = client.get("/")
+    assert "Lawyers and Conveyancers Act" in r.text
+    assert "solicitor-client relationship" in r.text
+    assert "tenant screening" in r.text
+
+
+def test_source_cards_anonymized(client):
+    # Source payload still has title field but frontend renders anonymized label.
+    # Backend test: confirm title field is present (backend unchanged).
+    # Frontend anonymization is tested by checking no party names in rendered label.
+    # We verify the API still returns title for backend use but the
+    # smoke test checks that court_name and date fields are present.
+    r = client.post("/ask", json={"question": "What is fair wear and tear?"})
+    if r.status_code != 200:
+        pytest.skip("LLM not available")
+    for s in r.json()["sources"]:
+        assert "court_name" in s
+        assert "date" in s

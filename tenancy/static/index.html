@@ -42,23 +42,8 @@
     </div>
   </section>
 
-  <section class="disclaimer">
-    <details open>
-      <summary>Important: Read before using</summary>
-      <div class="disclaimer-content">
-        <p>This tool searches real NZ Tenancy Tribunal decisions published by the <a href="https://www.justice.govt.nz/" target="_blank" rel="noopener">Ministry of Justice</a>. Decision links point to <a href="https://www.nzlii.org/" target="_blank" rel="noopener">NZLII</a> (NZ Legal Information Institute).</p>
-        <p><strong>This tool does not constitute legal advice</strong> under the Lawyers and Conveyancers Act 2006. No solicitor-client relationship is created by using this tool. The developer accepts no liability for decisions made based on information provided by this tool.</p>
-        <p>AI-generated answers may be <strong>inaccurate, incomplete, or outdated</strong>. Decisions cited may have been appealed, overturned, or superseded by legislative changes.</p>
-        <p><strong>Do not</strong> use this tool to research individuals for discriminatory purposes, including tenant screening. This may breach the Human Rights Act 1993 and Privacy Act 2020.</p>
-        <p>For advice on your specific situation, contact:</p>
-        <ul>
-          <li><strong>Tenancy Services:</strong> <a href="tel:0800836262">0800 836 262</a> (free, Mon-Fri)</li>
-          <li><strong>Community Law:</strong> <a href="https://communitylaw.org.nz" target="_blank" rel="noopener">communitylaw.org.nz</a> (free legal help)</li>
-          <li><strong>Citizens Advice Bureau:</strong> <a href="https://www.cab.org.nz" target="_blank" rel="noopener">cab.org.nz</a></li>
-          <li><strong>Tenancy Tribunal:</strong> <a href="https://www.tenancy.govt.nz/disputes/tenancy-tribunal/" target="_blank" rel="noopener">tenancy.govt.nz</a></li>
-        </ul>
-      </div>
-    </details>
+  <section class="disclaimer-badge">
+    Not legal advice &middot; AI-generated research &middot; <a href="#" id="show-terms">Read terms</a>
   </section>
 
   <section class="ask-card">
@@ -155,6 +140,24 @@
   </div>
 </footer>
 
-<script src="/static/app.js?v=5"></script>
+<div id="disclaimer-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-box">
+    <h2 id="modal-title">Before you continue</h2>
+    <div class="modal-body">
+      <p>This tool searches real NZ Tenancy Tribunal decisions published by the <a href="https://www.justice.govt.nz/" target="_blank" rel="noopener">Ministry of Justice</a>. Decision links point to <a href="https://www.nzlii.org/" target="_blank" rel="noopener">NZLII</a>.</p>
+      <p><strong>This tool does not constitute legal advice</strong> under the Lawyers and Conveyancers Act 2006. No solicitor-client relationship is created by using this tool. The developer accepts no liability for decisions made based on information provided.</p>
+      <p>AI-generated answers may be <strong>inaccurate, incomplete, or outdated</strong>. Decisions cited may have been appealed, overturned, or superseded by legislative changes.</p>
+      <p><strong>Do not</strong> use this tool to research individuals for discriminatory purposes, including tenant screening. This may breach the Human Rights Act 1993 and Privacy Act 2020.</p>
+      <p>For advice on your specific situation, contact <a href="https://communitylaw.org.nz" target="_blank" rel="noopener">Community Law</a> (free) or Tenancy Services on <a href="tel:0800836262">0800 836 262</a>.</p>
+    </div>
+    <label class="modal-checkbox">
+      <input type="checkbox" id="disclaimer-checkbox">
+      I understand this is not legal advice and I will not use this tool for discriminatory purposes.
+    </label>
+    <button id="disclaimer-agree" class="submit-btn" disabled>I agree - continue</button>
+  </div>
+</div>
+
+<script src="/static/app.js?v=6"></script>
 </body>
 </html>
