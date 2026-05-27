@@ -80,7 +80,7 @@ class VectorStore:
 
     def ensure_collection(self) -> None:
         existing = [c.name for c in self._client.get_collections().collections]
-        if config.QDRANT_COLLECTION not in existing:
+        if self._collection not in existing:
             self._client.create_collection(
                 collection_name=self._collection,
                 vectors_config=VectorParams(

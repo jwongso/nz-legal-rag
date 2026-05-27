@@ -15,8 +15,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import config
 from rag.generator import Generator
 from rag.pipeline import RAGPipeline
+from rag.retriever import VectorStore
 from tenancy.queue import acquire, queue_status, release
 
 _TENANCY_SYSTEM_PROMPT = """You are a free legal research assistant helping New Zealand tenants understand \
@@ -41,6 +43,7 @@ async def lifespan(app: FastAPI):
     global _pipeline
     _pipeline = RAGPipeline()
     _pipeline._generator = Generator(system_prompt=_TENANCY_SYSTEM_PROMPT)
+    _pipeline._store = VectorStore(collection=config.QDRANT_TENANCY_COLLECTION)
     yield
     if _pipeline:
         await _pipeline.close()
@@ -102,7 +105,6 @@ async def ask(req: AskRequest, request: Request) -> dict:
     try:
         result = await _pipeline.ask(
             question=question,
-            courts=["NZTT"],
             top_k=5,
         )
         # Strip the appended Sources block from answer - rendered separately on frontend

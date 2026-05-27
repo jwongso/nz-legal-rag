@@ -3,6 +3,7 @@ from pathlib import Path
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "nz_legal")
+QDRANT_TENANCY_COLLECTION = os.getenv("QDRANT_TENANCY_COLLECTION", "nztt_moj")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
