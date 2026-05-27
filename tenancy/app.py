@@ -17,7 +17,7 @@ from cachetools import TTLCache
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -227,6 +227,47 @@ async def ask(req: AskRequest, request: Request) -> dict:
         }
     finally:
         release(ip)
+
+
+@app.post("/ask/stream")
+async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
+    _check_token(request)
+    await _check_llm()
+    question = _sanitize_question(req.question.strip())
+    if not question:
+        raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
+    if len(question) > 2000:
+        raise HTTPException(status_code=400, detail={"error": "Question too long (max 2000 characters)."})
+
+    ip = await acquire(request)
+
+    async def _event_stream():
+        try:
+            context_texts, sources = await _pipeline.retrieve(question, top_k=5)
+            if not context_texts:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No relevant decisions found for this question.'})}\n\n"
+                return
+
+            public_sources = [{k: v for k, v in s.items() if k != "title"} for s in sources]
+            yield f"data: {json.dumps({'type': 'sources', 'sources': public_sources})}\n\n"
+
+            async for token in _pipeline._generator.generate_stream(question, context_texts, sources):
+                yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+        finally:
+            release(ip)
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/feedback")

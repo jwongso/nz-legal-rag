@@ -205,17 +205,20 @@ function showLoading() {
   }, 5000);
 }
 
-function showResult(answer, sources) {
+function showStreamingResult() {
   clearInterval(loadingInterval);
   loadingCard.classList.remove('visible');
   errorCard.classList.remove('visible');
-  answerBody.innerHTML = renderAnswer(answer);
-  renderSources(sources);
-  resetFeedback();
   resultCard.classList.add('visible');
   askAnotherRow.classList.add('visible');
-  submitBtn.disabled = false;
   resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function finaliseResult(fullText, sources) {
+  answerBody.innerHTML = renderAnswer(fullText);
+  renderSources(sources);
+  resetFeedback();
+  submitBtn.disabled = false;
 }
 
 function showError(message) {
@@ -239,7 +242,7 @@ function resetToForm() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ---- Form submit ----
+// ---- Form submit (SSE streaming) ----
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const question = questionEl.value.trim();
@@ -247,29 +250,81 @@ form.addEventListener('submit', async (e) => {
   currentQuestion = question;
   showLoading();
 
+  let res;
   try {
-    const res = await fetch('/ask', {
+    res = await fetch('/ask/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
       body: JSON.stringify({ question }),
     });
-    const data = await res.json();
-
-    if (!res.ok) {
-      const msg = (data.detail && data.detail.error) || data.detail || 'An error occurred.';
-      if (res.status === 429) {
-        showError('You already have a query in progress. Please wait for it to finish.');
-      } else if (res.status === 503) {
-        showError('The server is busy right now. Please try again in a moment.');
-      } else {
-        showError(msg);
-      }
-      return;
-    }
-
-    showResult(data.answer, data.sources);
   } catch (_) {
     showError('Could not connect to the server. Please check your connection and try again.');
+    return;
+  }
+
+  if (!res.ok) {
+    let msg = 'An error occurred.';
+    try {
+      const data = await res.json();
+      msg = (data.detail && data.detail.error) || data.detail || msg;
+    } catch (_) {}
+    if (res.status === 429) {
+      showError('You already have a query in progress. Please wait for it to finish.');
+    } else if (res.status === 503) {
+      showError('The server is busy right now. Please try again in a moment.');
+    } else {
+      showError(msg);
+    }
+    return;
+  }
+
+  // SSE: parse the stream
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let rawAnswer = '';
+  let streamedSources = [];
+  let streamingStarted = false;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary;
+      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+        const raw = buffer.slice(0, boundary).trim();
+        buffer = buffer.slice(boundary + 2);
+        if (!raw.startsWith('data: ')) continue;
+        let event;
+        try { event = JSON.parse(raw.slice(6)); } catch (_) { continue; }
+
+        if (event.type === 'sources') {
+          streamedSources = event.sources;
+          renderSources(streamedSources);
+        } else if (event.type === 'token') {
+          if (!streamingStarted) {
+            streamingStarted = true;
+            showStreamingResult();
+            answerBody.textContent = '';
+          }
+          rawAnswer += event.text;
+          answerBody.textContent = rawAnswer;
+        } else if (event.type === 'done') {
+          finaliseResult(rawAnswer, streamedSources);
+        } else if (event.type === 'error') {
+          showError(event.message || 'An error occurred.');
+          return;
+        }
+      }
+    }
+    // If stream ended without a 'done' event, finalise what we have
+    if (streamingStarted && rawAnswer) {
+      finaliseResult(rawAnswer, streamedSources);
+    }
+  } catch (_) {
+    showError('Lost connection while receiving the answer. Please try again.');
   }
 });
 

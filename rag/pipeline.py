@@ -175,6 +175,38 @@ class RAGPipeline:
             citation_verification=citation_check,
         )
 
+    async def retrieve(
+        self,
+        question: str,
+        top_k: int = config.TOP_K,
+    ) -> tuple[list[str], list[dict]]:
+        """Embed + Qdrant search + dedup + rerank. Returns (context_texts, sources)."""
+        query_vector = await self._embedder.embed(question)
+        raw_hits = self._store.search(query_vector, top_k=top_k * 3)
+        if not raw_hits:
+            return [], []
+        hits = _deduplicate(raw_hits, top_k * 2)
+        from rag.legal_ranker import QueryContext, rerank as legal_rerank
+        ctx = QueryContext.from_query(question)
+        hits = legal_rerank(hits, ctx)
+        if self._reranker is not None:
+            candidates = hits[:config.RERANK_CANDIDATES]
+            hits = self._reranker.rerank(question, candidates, top_k)
+        else:
+            hits = hits[:top_k]
+        context_texts = [h.text for h in hits]
+        sources = [
+            {
+                "case_id": h.case_id,
+                "title": h.title,
+                "court_name": h.court_name,
+                "date": h.date,
+                "url": h.url,
+            }
+            for h in hits
+        ]
+        return context_texts, sources
+
     async def search_only(
         self,
         query: str,

@@ -16,6 +16,9 @@ Current: Qwen3.6-35B-A3B MoE on single host GPU (14 GPU layers, 4096 ctx).
 #       sub-second time-to-first-token on the legal Q&A use case.
 """
 
+import json
+from typing import AsyncIterator
+
 import httpx
 
 import config
@@ -38,6 +41,53 @@ class Generator:
             timeout=120,
         )
         self._system_prompt = system_prompt if system_prompt is not None else _SYSTEM_PROMPT
+
+    async def generate_stream(
+        self, question: str, context_chunks: list[str], sources: list[dict]
+    ) -> AsyncIterator[str]:
+        """Yield raw token strings from the LLM as they arrive."""
+        truncated = [c[:1500] for c in context_chunks]
+        context_block = "\n\n---\n\n".join(
+            f"[S{i + 1}] {chunk}" for i, chunk in enumerate(truncated)
+        )
+        source_header = "\n".join(
+            f"  [S{i + 1}] {s.get('title', 'Unknown')} | {s.get('court_name', '')} | "
+            f"{s.get('date', '')} | {s.get('url', '')}"
+            for i, s in enumerate(sources)
+        )
+        user_message = (
+            f"Source index:\n{source_header}\n\n"
+            f"Context documents (numbered to match source index):\n\n{context_block}\n\n"
+            f"---\n\nQuestion: {question}\n\n"
+            f"Answer using only the context above. Cite sources with [SN] notation "
+            f"(e.g. [S1], [S2]) matching the source index. Do not invent other citation formats."
+        )
+        payload = {
+            "model": config.LLM_MODEL,
+            "messages": [
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_tokens": config.LLM_MAX_TOKENS,
+            "temperature": config.LLM_TEMPERATURE,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "stream": True,
+        }
+        async with self._client.stream("POST", "/chat/completions", json=payload) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    token = chunk["choices"][0]["delta"].get("content", "")
+                    if token:
+                        yield token
+                except (KeyError, json.JSONDecodeError):
+                    continue
 
     async def generate(self, question: str, context_chunks: list[str], sources: list[dict]) -> str:
         truncated = [c[:1500] for c in context_chunks]
