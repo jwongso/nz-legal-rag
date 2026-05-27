@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import asyncio
+import os
 import time
 
 import config
@@ -21,7 +22,9 @@ from rag.embedder import Embedder
 from rag.retriever import VectorStore
 
 
-async def run(dry_run: bool = False, limit: int | None = None) -> None:
+async def run(dry_run: bool = False, limit: int | None = None, resume_from: int = 0, nice: int = 0) -> None:
+    if nice:
+        os.nice(nice)
     embedder = Embedder()
     store = VectorStore(collection=config.QDRANT_TENANCY_COLLECTION)
     if not dry_run:
@@ -31,7 +34,7 @@ async def run(dry_run: bool = False, limit: int | None = None) -> None:
     total_chunks = 0
     t0 = time.time()
 
-    async for doc in scrape_moj(verbose=True):
+    async for doc in scrape_moj(verbose=True, resume_from=resume_from):
         if limit and total_docs >= limit:
             break
 
@@ -48,7 +51,7 @@ async def run(dry_run: bool = False, limit: int | None = None) -> None:
             continue
 
         texts = [c.text for c in chunks]
-        vectors = await embedder.embed_batch(texts)
+        vectors = await embedder.embed_batch(texts, batch_size=32)
 
         payloads = [
             {
@@ -85,8 +88,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest MoJ TT decisions into Qdrant")
     parser.add_argument("--dry-run", action="store_true", help="Count only, no writes")
     parser.add_argument("--limit", type=int, default=None, help="Stop after N documents")
+    parser.add_argument("--resume-from", type=int, default=0, help="Skip first N Solr records (resume after crash)")
+    parser.add_argument("--nice", type=int, default=10, help="Process nice level 0-19 (default 10)")
     args = parser.parse_args()
-    asyncio.run(run(dry_run=args.dry_run, limit=args.limit))
+    asyncio.run(run(dry_run=args.dry_run, limit=args.limit, resume_from=args.resume_from, nice=args.nice))
 
 
 if __name__ == "__main__":

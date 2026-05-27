@@ -16,9 +16,11 @@ Attribution required: "Source: Ministry of Justice, forms.justice.govt.nz"
 import asyncio
 import gzip
 import json
+import random
 import re
 import time
 from typing import AsyncIterator
+from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -32,7 +34,9 @@ _HEADERS = {
     "Accept-Encoding": "gzip, deflate",
 }
 _PAGE_SIZE = 100
-_RATE_LIMIT_S = 0.5
+_RATE_LIMIT_S = 3.0   # polite: ~30 req/min sustained
+_RATE_JITTER = 2.0    # randomise +0 to +2s to avoid fingerprinting
+_RETRY_BACKOFFS = [30, 60, 120, 300, 600, 900]  # last value repeats indefinitely
 
 
 def _fetch_solr(start: int = 0, rows: int = _PAGE_SIZE) -> dict:
@@ -51,13 +55,21 @@ def _fetch_solr(start: int = 0, rows: int = _PAGE_SIZE) -> dict:
         "json.wrf": "cb",
     }
     url = _SOLR_URL + "?" + urlencode(params)
-    req = Request(url, headers=_HEADERS)
-    resp = urlopen(req, timeout=30)
-    raw = resp.read()
-    body = gzip.decompress(raw).decode() if raw[:2] == b"\x1f\x8b" else raw.decode()
-    start_idx = body.index("(") + 1
-    end_idx = body.rindex(")")
-    return json.loads(body[start_idx:end_idx])
+    attempt = 0
+    while True:
+        try:
+            req = Request(url, headers=_HEADERS)
+            resp = urlopen(req, timeout=45)
+            raw = resp.read()
+            body = gzip.decompress(raw).decode() if raw[:2] == b"\x1f\x8b" else raw.decode()
+            start_idx = body.index("(") + 1
+            end_idx = body.rindex(")")
+            return json.loads(body[start_idx:end_idx])
+        except (URLError, TimeoutError, OSError) as e:
+            backoff = _RETRY_BACKOFFS[min(attempt, len(_RETRY_BACKOFFS) - 1)]
+            attempt += 1
+            print(f"  [retry {attempt}, wait {backoff}s] {e}")
+            time.sleep(backoff)
 
 
 def _parse_doc(doc: dict) -> CaseDocument | None:
@@ -95,13 +107,19 @@ def _parse_doc(doc: dict) -> CaseDocument | None:
     # Extract any [YEAR] NZTT NNNN citations from the text
     citations = re.findall(r"\[\d{4}\]\s+NZTT\s+\d+", text)
 
+    url = (
+        f"https://www.nzlii.org/nz/cases/NZTT/{year}/{app_number}.html"
+        if year and app_number.isdigit()
+        else "https://forms.justice.govt.nz/search/TT/"
+    )
+
     return CaseDocument(
         case_id=f"NZTT-MOJ-{app_number}",
         court="NZTT",
         court_name="Tenancy Tribunal",
         year=year,
         number=int(app_number) if app_number.isdigit() else 0,
-        url=f"https://forms.justice.govt.nz/search/TT/",
+        url=url,
         title=title,
         date=date_str,
         parties=parties,
@@ -116,13 +134,19 @@ def count_total() -> int:
     return data["response"]["numFound"]
 
 
-async def scrape_moj(verbose: bool = True) -> AsyncIterator[CaseDocument]:
-    """Yield all TT decisions from the MoJ Solr index, paginated."""
+async def scrape_moj(verbose: bool = True, resume_from: int = 0) -> AsyncIterator[CaseDocument]:
+    """Yield all TT decisions from the MoJ Solr index, paginated.
+
+    resume_from: skip the first N Solr records (use to resume after a crash).
+    """
     total = count_total()
     if verbose:
         print(f"MoJ TT index: {total} decisions")
 
-    start = 0
+    start = resume_from
+    if resume_from and verbose:
+        print(f"Resuming from offset {resume_from}")
+
     fetched = 0
     while start < total:
         data = _fetch_solr(start=start, rows=_PAGE_SIZE)
@@ -140,7 +164,8 @@ async def scrape_moj(verbose: bool = True) -> AsyncIterator[CaseDocument]:
         if verbose and start % 500 == 0:
             print(f"  {start}/{total} fetched, {fetched} parsed")
 
-        await asyncio.sleep(_RATE_LIMIT_S)
+        delay = _RATE_LIMIT_S + random.uniform(0, _RATE_JITTER)
+        await asyncio.sleep(delay)
 
     if verbose:
         print(f"Done: {fetched} decisions parsed from {start} records")
