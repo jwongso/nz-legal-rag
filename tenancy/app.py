@@ -5,6 +5,7 @@ a tenancy-focused system prompt, and a fair queue.
 """
 
 import json
+import os
 import re
 import unicodedata
 from contextlib import asynccontextmanager
@@ -39,6 +40,7 @@ communitylaw.org.nz or Tenancy Services on 0800 836 262."
 """
 
 _pipeline: RAGPipeline | None = None
+_PUBLIC_TOKEN = os.getenv("TENANCY_API_TOKEN", "")
 
 _ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
 _MAX_BODY_BYTES = 10_240  # 10 KB
@@ -146,6 +148,22 @@ async def health() -> dict:
     return {"status": "ok", **queue_status()}
 
 
+@app.get("/token")
+async def token() -> dict:
+    """Return the public API token for browser clients."""
+    return {"token": _PUBLIC_TOKEN}
+
+
+def _check_token(request: Request) -> None:
+    if not _PUBLIC_TOKEN:
+        return
+    if request.headers.get("X-API-Key") != _PUBLIC_TOKEN:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Ask the maintainer for a public API token."},
+        )
+
+
 _FEEDBACK_LOG = Path("data/tenancy_feedback.jsonl")
 _FEEDBACK_COOLDOWN_S = 30
 _feedback_last: dict[str, float] = {}
@@ -163,6 +181,7 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/ask")
 async def ask(req: AskRequest, request: Request) -> dict:
+    _check_token(request)
     question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
@@ -192,6 +211,7 @@ async def ask(req: AskRequest, request: Request) -> dict:
 @app.post("/feedback")
 async def feedback(req: FeedbackRequest, request: Request) -> dict:
     import time
+    _check_token(request)
     if req.rating not in (1, -1):
         raise HTTPException(status_code=400, detail="Rating must be 1 or -1.")
     ip = get_client_ip(request)

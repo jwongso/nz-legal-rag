@@ -1,5 +1,15 @@
 'use strict';
 
+let _apiToken = '';
+
+async function _loadToken() {
+  try {
+    const res = await fetch('/token');
+    const data = await res.json();
+    _apiToken = data.token || '';
+  } catch (_) {}
+}
+
 const form = document.getElementById('ask-form');
 const questionEl = document.getElementById('question');
 const charCountEl = document.getElementById('char-count');
@@ -166,7 +176,7 @@ feedbackSubmit.addEventListener('click', async () => {
   try {
     await fetch('/feedback', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
       body: JSON.stringify({
         question: currentQuestion,
         rating: currentRating,
@@ -240,7 +250,7 @@ form.addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/ask', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
       body: JSON.stringify({ question }),
     });
     const data = await res.json();
@@ -288,6 +298,7 @@ function initDisclaimer() {
 }
 
 // ---- Init ----
+_loadToken();
 pollQueue();
 setInterval(pollQueue, 15000);
 initDisclaimer();
