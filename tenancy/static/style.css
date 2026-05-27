@@ -428,6 +428,17 @@ textarea:focus {
   color: var(--muted);
 }
 
+/* ---- AI warning ---- */
+.ai-warning {
+  margin-top: 14px;
+  padding: 8px 12px;
+  background: #fef9ec;
+  border-left: 3px solid #d4a830;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  color: #7a5a00;
+}
+
 /* ---- Error ---- */
 .error-card {
   background: var(--error-bg);
@@ -557,6 +568,8 @@ footer {
 footer a { color: rgba(255,255,255,0.85); }
 
 footer .footer-links { margin-top: 6px; }
+
+footer .footer-copyright { margin-top: 6px; opacity: 0.75; }
 
 /* ---- Responsive ---- */
 @media (max-width: 480px) {

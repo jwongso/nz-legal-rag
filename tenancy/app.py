@@ -5,6 +5,8 @@ a tenancy-focused system prompt, and a fair queue.
 """
 
 import json
+import re
+import unicodedata
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +41,34 @@ communitylaw.org.nz or Tenancy Services on 0800 836 262."
 _pipeline: RAGPipeline | None = None
 
 _ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
+_MAX_BODY_BYTES = 10_240  # 10 KB
+
+# Common prompt injection patterns
+_INJECTION_RE = re.compile(
+    r"ignore\s+(previous|all|prior|above)\s+(instructions?|rules?|prompts?)"
+    r"|forget\s+(previous|all|prior|above)\s+(instructions?|rules?|prompts?)"
+    r"|you\s+are\s+now\s+(a\s+|an\s+)?"
+    r"|act\s+as\s+(if\s+)?(you\s+are\s+)?"
+    r"|pretend\s+(you|to\s+be)"
+    r"|system\s*prompt\s*:"
+    r"|<\s*system\s*>",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_question(text: str) -> str:
+    """Strip control characters and detect obvious prompt injection attempts."""
+    # Remove control chars except newline and tab
+    text = "".join(
+        c for c in text
+        if unicodedata.category(c) not in ("Cc", "Cf") or c in "\n\t"
+    )
+    if _INJECTION_RE.search(text):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Question contains content that cannot be processed."},
+        )
+    return text
 
 _CSP = (
     "default-src 'self'; "
@@ -58,6 +88,18 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Content-Security-Policy"] = _CSP
         return response
+
+
+class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_BODY_BYTES:
+            return Response(
+                content='{"detail": "Request body too large."}',
+                status_code=413,
+                media_type="application/json",
+            )
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -82,6 +124,7 @@ app = FastAPI(
     redoc_url=None,
 )
 
+app.add_middleware(_BodySizeLimitMiddleware)
 app.add_middleware(_SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -120,7 +163,7 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/ask")
 async def ask(req: AskRequest, request: Request) -> dict:
-    question = req.question.strip()
+    question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
     if len(question) > 2000:
