@@ -542,7 +542,6 @@ textarea:focus {
 .feedback-comment {
   display: none;
   margin-top: 12px;
-  display: none;
 }
 
 .feedback-comment textarea {

@@ -12,6 +12,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
+from cachetools import TTLCache
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -154,6 +157,19 @@ async def token() -> dict:
     return {"token": _PUBLIC_TOKEN}
 
 
+async def _check_llm() -> None:
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(f"{config.LLM_BASE_URL}/models")
+            if r.status_code != 200:
+                raise Exception()
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "The AI model is currently loading. Please try again in 30 seconds."},
+        )
+
+
 def _check_token(request: Request) -> None:
     if not _PUBLIC_TOKEN:
         return
@@ -166,7 +182,7 @@ def _check_token(request: Request) -> None:
 
 _FEEDBACK_LOG = Path("data/tenancy_feedback.jsonl")
 _FEEDBACK_COOLDOWN_S = 30
-_feedback_last: dict[str, float] = {}
+_feedback_last: TTLCache = TTLCache(maxsize=2000, ttl=_FEEDBACK_COOLDOWN_S)
 
 
 class AskRequest(BaseModel):
@@ -182,6 +198,7 @@ class FeedbackRequest(BaseModel):
 @app.post("/ask")
 async def ask(req: AskRequest, request: Request) -> dict:
     _check_token(request)
+    await _check_llm()
     question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
@@ -214,15 +231,13 @@ async def ask(req: AskRequest, request: Request) -> dict:
 
 @app.post("/feedback")
 async def feedback(req: FeedbackRequest, request: Request) -> dict:
-    import time
     _check_token(request)
     if req.rating not in (1, -1):
         raise HTTPException(status_code=400, detail="Rating must be 1 or -1.")
     ip = get_client_ip(request)
-    now = time.monotonic()
-    if now - _feedback_last.get(ip, 0) < _FEEDBACK_COOLDOWN_S:
+    if ip in _feedback_last:
         raise HTTPException(status_code=429, detail="Please wait before submitting more feedback.")
-    _feedback_last[ip] = now
+    _feedback_last[ip] = 1
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "question": req.question[:500],
