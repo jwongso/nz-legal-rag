@@ -200,9 +200,13 @@ async def ask(req: AskRequest, request: Request) -> dict:
         if idx != -1:
             answer = answer[:idx].strip()
 
+        sources = [
+            {k: v for k, v in s.items() if k != "title"}
+            for s in result.sources
+        ]
         return {
             "answer": answer,
-            "sources": result.sources,
+            "sources": sources,
         }
     finally:
         release(ip)

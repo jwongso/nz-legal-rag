@@ -136,7 +136,7 @@ def test_ask_source_shape(client):
     assert r.status_code == 200
     for s in r.json()["sources"]:
         assert "case_id" in s
-        assert "title" in s
+        assert "title" not in s, "title (party names) must not be exposed in API response"
         assert "court_name" in s
         assert "date" in s
         assert "url" in s
