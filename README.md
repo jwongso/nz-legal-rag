@@ -123,12 +123,18 @@ Data ingestion:
 
 ## Data sources
 
-| Source | Content | Courts indexed |
-|---|---|---|
-| NZLII (nzlii.org) | NZ legal information institute - free public access | NZSC, NZCA, NZHC, NZERA, NZEmpC, NZEnvC, NZACC, NZCorC, NZFC, NZLCDT, NZHRRT, NZREADT, NZTT |
+| Source | Content | Courts indexed | Collection |
+|---|---|---|---|
+| NZLII (nzlii.org) | NZ legal information institute - free public access | NZSC, NZCA, NZHC, NZERA, NZEmpC, NZEnvC, NZACC, NZCorC, NZFC, NZLCDT, NZHRRT, NZREADT, NZTT | `nz_legal` |
+| Ministry of Justice (forms.justice.govt.nz) | Tenancy Tribunal decisions via public Solr index - Crown copyright, non-commercial reuse with attribution permitted under NZGOAL | NZTT (2023-2026) | `nztt_moj` |
 
 NZLII hosts HTML decisions for most courts. Tenancy Tribunal (NZTT) decisions
 are PDF-only on NZLII - the scraper fetches and extracts these via pypdf.
+
+The `nztt_moj` collection ingests from the MoJ public Solr proxy directly (no scraping,
+no Playwright). Decision text is embedded in the Solr `document_text_abstract` field.
+Source: Ministry of Justice, forms.justice.govt.nz. Decision links point to NZLII
+individual pages (linking is not scraping).
 
 **Current coverage:**
 
@@ -152,11 +158,15 @@ are PDF-only on NZLII - the scraper fetches and extracts these via pypdf.
 
 ---
 
-## Live demo
+## Live demos
 
+**Full legal research tool (private, all courts):**
 https://nz-legal-rag.localrun.ai
 
-On-premise instance running on local hardware, exposed via Cloudflare Tunnel.
+**Tenancy Tribunal tool (public, Crown copyright MoJ data):**
+https://tenancy.localrun.ai
+
+Both run on-premise on local hardware, exposed via Cloudflare Tunnel.
 No data leaves the machine - the tunnel only carries HTTP traffic to the UI.
 
 ---
