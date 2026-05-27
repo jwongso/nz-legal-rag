@@ -74,12 +74,9 @@ function renderAnswer(text) {
   if (idx !== -1) text = text.substring(0, idx);
   text = escapeHtml(text.trim());
 
-  // Citation badges [SN]
-  text = text.replace(/\[S(\d+)\]/g, '<span class="citation">[S$1]</span>');
-  // Bold
-  text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-  return text.split(/\n{2,}/).map(para => {
+  // Build structure first (before inline replacements so ** and [SN] don't
+  // interfere with list detection - e.g. **3. Item** would break ^\d+\. )
+  const html = text.split(/\n{2,}/).map(para => {
     const lines = para.split('\n');
     if (lines.some(l => /^[-*] /.test(l.trim()))) {
       const items = lines
@@ -100,6 +97,11 @@ function renderAnswer(text) {
     }
     return `<p>${lines.join('<br>')}</p>`;
   }).join('');
+
+  // Apply inline formatting after structure is built
+  return html
+    .replace(/\[S(\d+)\]/g, '<span class="citation">[S$1]</span>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
 function escapeHtml(str) {
