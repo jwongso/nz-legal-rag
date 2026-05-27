@@ -11,15 +11,16 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import config
 from rag.generator import Generator
 from rag.pipeline import RAGPipeline
 from rag.retriever import VectorStore
-from tenancy.queue import acquire, queue_status, release
+from tenancy.queue import acquire, get_client_ip, queue_status, release
 
 _TENANCY_SYSTEM_PROMPT = """You are a free legal research assistant helping New Zealand tenants understand \
 their rights based on real Tenancy Tribunal decisions.
@@ -36,6 +37,27 @@ communitylaw.org.nz or Tenancy Services on 0800 836 262."
 """
 
 _pipeline: RAGPipeline | None = None
+
+_ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none';"
+)
+
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = _CSP
+        return response
 
 
 @asynccontextmanager
@@ -60,11 +82,12 @@ app = FastAPI(
     redoc_url=None,
 )
 
+app.add_middleware(_SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[_ALLOWED_ORIGIN],
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type"],
 )
 
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
@@ -81,6 +104,8 @@ async def health() -> dict:
 
 
 _FEEDBACK_LOG = Path("data/tenancy_feedback.jsonl")
+_FEEDBACK_COOLDOWN_S = 30
+_feedback_last: dict[str, float] = {}
 
 
 class AskRequest(BaseModel):
@@ -122,9 +147,15 @@ async def ask(req: AskRequest, request: Request) -> dict:
 
 
 @app.post("/feedback")
-async def feedback(req: FeedbackRequest) -> dict:
+async def feedback(req: FeedbackRequest, request: Request) -> dict:
+    import time
     if req.rating not in (1, -1):
         raise HTTPException(status_code=400, detail="Rating must be 1 or -1.")
+    ip = get_client_ip(request)
+    now = time.monotonic()
+    if now - _feedback_last.get(ip, 0) < _FEEDBACK_COOLDOWN_S:
+        raise HTTPException(status_code=429, detail="Please wait before submitting more feedback.")
+    _feedback_last[ip] = now
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "question": req.question[:500],

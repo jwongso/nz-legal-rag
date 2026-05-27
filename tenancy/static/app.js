@@ -72,7 +72,7 @@ async function pollQueue() {
 function renderAnswer(text) {
   const idx = text.lastIndexOf('\n\nSources:');
   if (idx !== -1) text = text.substring(0, idx);
-  text = text.trim();
+  text = escapeHtml(text.trim());
 
   // Citation badges [SN]
   text = text.replace(/\[S(\d+)\]/g, '<span class="citation">[S$1]</span>');
@@ -113,12 +113,13 @@ function renderSources(sources) {
   sourcesList.innerHTML = sources.map((s, i) => {
     const title = s.title || 'Unknown decision';
     const meta = [s.court_name, s.date].filter(Boolean).join(' - ');
-    const url = s.url || '#';
+    const rawUrl = s.url || '';
+    const url = rawUrl.startsWith('https://') ? rawUrl : '#';
     return `
       <div class="source-card">
         <span class="source-num">S${i + 1}</span>
         <div class="source-info">
-          <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>
+          <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>
           <span class="source-meta">${escapeHtml(meta)}</span>
         </div>
       </div>`;
