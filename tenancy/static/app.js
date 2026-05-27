@@ -91,7 +91,10 @@ function renderAnswer(text) {
     if (lines.some(l => /^\d+\. /.test(l.trim()))) {
       const items = lines
         .filter(l => /^\d+\. /.test(l.trim()))
-        .map(l => `<li>${l.trim().replace(/^\d+\. /, '')}</li>`)
+        .map(l => {
+          const m = l.trim().match(/^(\d+)\. (.*)/);
+          return m ? `<li value="${m[1]}">${m[2]}</li>` : `<li>${l.trim()}</li>`;
+        })
         .join('');
       return `<ol>${items}</ol>`;
     }
