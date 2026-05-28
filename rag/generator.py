@@ -43,7 +43,8 @@ class Generator:
         self._system_prompt = system_prompt if system_prompt is not None else _SYSTEM_PROMPT
 
     async def generate_stream(
-        self, question: str, context_chunks: list[str], sources: list[dict]
+        self, question: str, context_chunks: list[str], sources: list[dict],
+        thinking: bool = False,
     ) -> AsyncIterator[str]:
         """Yield raw token strings from the LLM as they arrive."""
         truncated = [c[:1500] for c in context_chunks]
@@ -70,7 +71,7 @@ class Generator:
             ],
             "max_tokens": config.LLM_MAX_TOKENS,
             "temperature": config.LLM_TEMPERATURE,
-            "chat_template_kwargs": {"enable_thinking": False},
+            "chat_template_kwargs": {"enable_thinking": thinking},
             "stream": True,
         }
         async with self._client.stream("POST", "/chat/completions", json=payload) as resp:

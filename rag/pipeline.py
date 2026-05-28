@@ -34,6 +34,37 @@ class RAGResponse:
     citation_verification: CitationVerification | None = None
 
 
+def _mmr_select(
+    hits: list[SearchResult], top_k: int, lambda_: float = 0.6
+) -> list[SearchResult]:
+    """Maximal Marginal Relevance: greedy selection balancing relevance vs diversity.
+
+    Uses Jaccard word-overlap as a lightweight inter-chunk similarity proxy.
+    lambda_=1.0 => pure relevance (identical to top-k). lambda_=0.0 => pure diversity.
+    """
+    selected: list[SearchResult] = []
+    remaining = list(hits)
+    while len(selected) < top_k and remaining:
+        if not selected:
+            selected.append(remaining.pop(0))
+            continue
+        best_score = -float("inf")
+        best_i = 0
+        for i, h in enumerate(remaining):
+            h_words = set(h.text.lower().split())
+            max_sim = max(
+                len(h_words & set(s.text.lower().split()))
+                / max(len(h_words | set(s.text.lower().split())), 1)
+                for s in selected
+            )
+            mmr = lambda_ * h.score - (1.0 - lambda_) * max_sim
+            if mmr > best_score:
+                best_score = mmr
+                best_i = i
+        selected.append(remaining.pop(best_i))
+    return selected
+
+
 def _deduplicate(hits: list[SearchResult], top_k: int) -> list[SearchResult]:
     """Keep the highest-scoring chunk per case_id to avoid context monopolisation."""
     seen: dict[str, SearchResult] = {}
@@ -181,25 +212,57 @@ class RAGPipeline:
         top_k: int = config.TOP_K,
         min_score: float = 0.0,
         min_chunks: int = 1,
+        strategy: str = "vector",
     ) -> tuple[list[str], list[dict]]:
-        """Embed + Qdrant search + dedup + rerank. Returns (context_texts, sources).
+        """Embed + search + dedup + rerank. Returns (context_texts, sources).
 
-        min_score: drop individual chunks below this cosine similarity score.
-        min_chunks: return empty if fewer than this many chunks survive filtering.
+        strategy:
+          "vector"          - cosine similarity + legal authority reranker (default)
+          "vector_no_legal" - cosine similarity only, skip legal authority reranker
+          "mmr"             - cosine similarity + MMR diversification
+          "bm25"            - PostgreSQL keyword search (different score scale)
+
+        min_score: drop chunks below this score (not applied to bm25).
+        min_chunks: return empty if fewer than this many chunks survive.
         """
+        if strategy == "bm25":
+            from db.filter import bm25_tenancy
+            hits = bm25_tenancy(question, top_k=top_k, min_score=min_score if min_score is not None else 0.01)
+            if len(hits) < min_chunks:
+                return [], []
+            context_texts = [h.text for h in hits]
+            sources = [
+                {
+                    "case_id": h.case_id,
+                    "title": h.title,
+                    "court_name": h.court_name,
+                    "date": h.date,
+                    "url": h.url,
+                    "_score": round(h.score, 6),
+                }
+                for h in hits
+            ]
+            return context_texts, sources
+
         query_vector = await self._embedder.embed(question)
         raw_hits = self._store.search(query_vector, top_k=top_k * 3)
         if not raw_hits:
             return [], []
         hits = _deduplicate(raw_hits, top_k * 2)
-        from rag.legal_ranker import QueryContext, rerank as legal_rerank
-        ctx = QueryContext.from_query(question)
-        hits = legal_rerank(hits, ctx)
+
+        if strategy != "vector_no_legal":
+            from rag.legal_ranker import QueryContext, rerank as legal_rerank
+            ctx = QueryContext.from_query(question)
+            hits = legal_rerank(hits, ctx)
+
         if self._reranker is not None:
             candidates = hits[:config.RERANK_CANDIDATES]
             hits = self._reranker.rerank(question, candidates, top_k)
+        elif strategy == "mmr":
+            hits = _mmr_select(hits, top_k)
         else:
             hits = hits[:top_k]
+
         if min_score > 0.0:
             hits = [h for h in hits if h.score >= min_score]
         if len(hits) < min_chunks:
@@ -212,6 +275,7 @@ class RAGPipeline:
                 "court_name": h.court_name,
                 "date": h.date,
                 "url": h.url,
+                "_score": round(h.score, 4),
             }
             for h in hits
         ]

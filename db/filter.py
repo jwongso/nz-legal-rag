@@ -10,10 +10,42 @@ Also provides bm25_search() as a pure-SQL keyword retrieval alternative.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import psycopg2
 import psycopg2.extras
+
+# Common NL question words that add noise to keyword search
+_BM25_STOPWORDS = re.compile(
+    r"\b(what|does|say|says|said|do|is|are|was|were|the|a|an|in|of|to|for|"
+    r"and|or|if|how|when|where|why|can|will|shall|should|would|could|"
+    r"tell|me|my|i|we|they|he|she|it|this|that|these|those|"
+    r"which|who|whom|whose|inform|handle|handles|case|cases|matter|"
+    r"please|want|need|have|has|had|get|got|give|given|make|made|"
+    r"about|with|from|into|onto|upon|under|over|between|through|"
+    r"must|may|might|let|put|set|go|going|done|been|being|also|"
+    r"tenancy|tenancies|act|section|clause|order|tribunal|landlord|tenant|"
+    r"residential|pursuant|accordance|agreement|property|lease)\b",
+    re.IGNORECASE,
+)
+
+
+def _prepare_bm25_query(raw: str) -> str:
+    """Normalise a natural-language or keyword query for plainto_tsquery / websearch_to_tsquery.
+
+    - Strips parenthesised subsection markers: 48(2)(d) -> 48
+    - Removes common NL question words that add noise
+    - Collapses whitespace
+    """
+    # Remove subsection markers like (2), (d), (2)(d) - keep the number before them
+    text = re.sub(r"\([^)]*\)", "", raw)
+    # Remove NL question words
+    text = _BM25_STOPWORDS.sub(" ", text)
+    # Collapse whitespace and strip punctuation-only tokens
+    text = re.sub(r"[^\w\s]", " ", text)
+    text = " ".join(text.split())
+    return text
 
 
 def _connect() -> psycopg2.extensions.connection:
@@ -255,6 +287,92 @@ def bm25_search(
         return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
+
+
+_BM25_HIGH_FREQ_TERMS = frozenset({
+    "damage", "damages", "damaged", "repair", "repairs", "repaired",
+    "pay", "paid", "payment", "cost", "costs", "claim", "claims",
+    "notice", "bond", "rent", "rental", "find", "found", "said",
+    "time", "year", "month", "day", "date", "period", "term",
+    "right", "rights", "obligation", "obligations", "require", "required",
+    "reasonable", "evidence", "hearing", "decision", "order", "award",
+    "amount", "total", "party", "parties", "applicant", "respondent",
+})
+
+
+def bm25_tenancy(query: str, top_k: int = 15, min_score: float = 0.01) -> list:
+    """BM25 keyword search restricted to NZTT chunks (MoJ dataset in PostgreSQL).
+
+    Two-pass strategy:
+    1. AND query with all prepared terms - fast and precise for specific queries.
+    2. If AND returns nothing, OR query using only low-frequency terms (not in
+       _BM25_HIGH_FREQ_TERMS), filtered by min_score.
+    """
+    from rag.retriever import SearchResult
+
+    kw = _prepare_bm25_query(query)
+    if not kw:
+        return []
+
+    terms = kw.split()
+    and_query = " ".join(terms)
+    # OR fallback uses only terms not in the high-frequency blocklist
+    rare_terms = [t for t in terms if t.lower() not in _BM25_HIGH_FREQ_TERMS]
+    or_query = " OR ".join(rare_terms) if rare_terms else " OR ".join(terms)
+
+    _SQL = """
+        WITH q AS (SELECT websearch_to_tsquery('english', %s) AS tsq)
+        SELECT
+            d.citation                               AS case_id,
+            d.title,
+            d.source_url                            AS url,
+            to_char(d.decision_date, 'DD/MM/YYYY') AS date,
+            ch.text,
+            ts_rank_cd(
+                to_tsvector('english', COALESCE(ch.text, '')),
+                q.tsq
+            )                                       AS score
+        FROM chunks ch
+        JOIN documents d ON ch.document_id = d.id
+        CROSS JOIN q
+        WHERE d.court = 'NZTT'
+          AND d.citation LIKE 'NZTT-MOJ-%%'
+          AND to_tsvector('english', COALESCE(ch.text, '')) @@ q.tsq
+        ORDER BY score DESC
+        LIMIT %s
+    """
+
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        # Pass 1: AND query - fast, precise
+        cur.execute(_SQL, (and_query, top_k * 4))
+        rows = cur.fetchall()
+        # Pass 2: OR fallback with low-frequency terms only
+        if not rows and rare_terms:
+            cur.execute(_SQL, (or_query, top_k * 4))
+            rows = cur.fetchall()
+            rows = [r for r in rows if float(r[5]) >= min_score]
+    finally:
+        conn.close()
+
+    # Dedup: one chunk per case_id, highest score
+    seen: dict[str, "SearchResult"] = {}
+    for case_id, title, url, date, text, score in rows:
+        if case_id not in seen or float(score) > seen[case_id].score:
+            seen[case_id] = SearchResult(
+                payload={
+                    "case_id": case_id,
+                    "title": title or "",
+                    "court_name": "Tenancy Tribunal",
+                    "url": url or "",
+                    "date": date or "",
+                    "text": text or "",
+                },
+                score=float(score),
+            )
+
+    return sorted(seen.values(), key=lambda x: x.score, reverse=True)[:top_k]
 
 
 def get_document_metadata(citation: str) -> dict | None:

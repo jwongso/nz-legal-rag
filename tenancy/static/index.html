@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NZ Tenancy Help - Free Legal Research</title>
   <meta name="description" content="Free NZ tenancy law research tool. Search real Tenancy Tribunal decisions to understand your rights as a tenant.">
-  <link rel="stylesheet" href="/static/style.css?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=7">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 </head>
 <body>
@@ -68,6 +68,16 @@
 
       <div id="queue-notice" class="queue-notice"></div>
 
+      <div id="debug-strategy" class="debug-strategy" style="display:none">
+        <span class="debug-strategy-label">Strategies:</span>
+        <label class="strategy-check-label"><input type="checkbox" class="strategy-check" value="vector" checked> Vector</label>
+        <label class="strategy-check-label"><input type="checkbox" class="strategy-check" value="vector_no_legal"> No rerank</label>
+        <label class="strategy-check-label"><input type="checkbox" class="strategy-check" value="mmr"> MMR</label>
+        <label class="strategy-check-label"><input type="checkbox" class="strategy-check" value="bm25"> BM25</label>
+        <span class="debug-strategy-divider">|</span>
+        <label class="strategy-check-label debug-think-label"><input type="checkbox" id="think-toggle"> /think</label>
+      </div>
+
       <button type="submit" id="submit-btn" class="submit-btn">Search Tribunal decisions</button>
     </form>
   </section>
@@ -117,6 +127,8 @@
     <button type="button" id="ask-another-btn" class="btn-secondary">Ask another question</button>
   </div>
 
+  <div id="compare-grid" class="compare-grid" style="display:none"></div>
+
   <div id="error-card" class="error-card" aria-live="assertive">
     <p id="error-text"></p>
     <button type="button" id="retry-btn" class="btn-secondary">Try again</button>
@@ -140,6 +152,8 @@
   </div>
 </footer>
 
+<div id="debug-badge" class="debug-badge" style="display:none">DEBUG MODE</div>
+
 <div id="disclaimer-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-box">
     <h2 id="modal-title">Before you continue</h2>
@@ -158,6 +172,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=12"></script>
+<script src="/static/app.js?v=21"></script>
 </body>
 </html>

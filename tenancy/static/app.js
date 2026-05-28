@@ -1,5 +1,132 @@
 'use strict';
 
+// ---- Debug mode (Ctrl+Shift+D to activate) ----
+let _debugKey = sessionStorage.getItem('_dbgKey') || '';
+let _debugMode = !!_debugKey;
+
+const compareGrid = document.getElementById('compare-grid');
+
+function _getSelectedStrategies() {
+  return [...document.querySelectorAll('.strategy-check:checked')].map(cb => cb.value);
+}
+
+function _setDebugUI(on) {
+  document.getElementById('debug-badge').style.display = on ? 'block' : 'none';
+  document.getElementById('debug-strategy').style.display = on ? 'flex' : 'none';
+  if (!on) {
+    compareGrid.style.display = 'none';
+    compareGrid.innerHTML = '';
+    askAnotherRow.classList.remove('visible');
+  }
+}
+
+async function _activateDebug() {
+  if (_debugMode) {
+    _debugMode = false;
+    _debugKey = '';
+    sessionStorage.removeItem('_dbgKey');
+    _setDebugUI(false);
+    history.replaceState(null, '', location.pathname);
+    alert('Debug mode off.');
+    return;
+  }
+  const key = prompt('Debug key:');
+  if (!key) return;
+  try {
+    const r = await fetch('/debug/ping', {
+      headers: { 'X-API-Key': _apiToken, 'X-Debug-Key': key },
+    });
+    if (r.ok) {
+      _debugKey = key;
+      _debugMode = true;
+      sessionStorage.setItem('_dbgKey', key);
+      _setDebugUI(true);
+    } else {
+      alert('Invalid debug key.');
+    }
+  } catch (_) {
+    alert('Could not validate debug key.');
+  }
+}
+
+function _initDebugShortcut() {
+  // URL hash trigger: navigate to #debug to activate
+  if (location.hash === '#debug') {
+    history.replaceState(null, '', location.pathname);
+    _activateDebug();
+  }
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#debug') {
+      history.replaceState(null, '', location.pathname);
+      _activateDebug();
+    }
+  });
+
+  if (_debugMode) {
+    fetch('/debug/ping', {
+      headers: { 'X-API-Key': _apiToken, 'X-Debug-Key': _debugKey },
+    }).then(r => {
+      if (r.ok) {
+        _setDebugUI(true);
+      } else {
+        _debugMode = false;
+        _debugKey = '';
+        sessionStorage.removeItem('_dbgKey');
+      }
+    }).catch(() => {
+      _debugMode = false;
+      _debugKey = '';
+      sessionStorage.removeItem('_dbgKey');
+    });
+  }
+}
+
+const _STRATEGY_LABELS = {
+  vector: 'Vector',
+  vector_no_legal: 'Vector (no legal rerank)',
+  mmr: 'MMR diverse',
+  bm25: 'BM25 keyword',
+};
+
+function _renderDebugPanel(dbg, dbgDone) {
+  const existing = document.getElementById('debug-panel');
+  if (existing) existing.remove();
+
+  const scores = dbg.scores || [];
+  const isBm25 = dbg.strategy === 'bm25';
+  const maxScore = Math.max(...scores, 0.0001);
+
+  const bars = scores.map((s, i) => {
+    // For BM25, normalise bar width to top score; for vector use absolute scale
+    const pct = isBm25 ? Math.round((s / maxScore) * 100) : Math.round(s * 100);
+    const cls = isBm25 ? 'mid' : (s >= 0.80 ? 'high' : s >= 0.76 ? 'mid' : 'low');
+    const label = isBm25 ? s.toFixed(5) : s.toFixed(4);
+    return `<div class="debug-score-row">
+      <span class="debug-score-label">S${i + 1}</span>
+      <div class="debug-score-bar-wrap"><div class="debug-score-bar ${cls}" style="width:${pct}%"></div></div>
+      <span class="debug-score-val">${label}</span>
+    </div>`;
+  }).join('');
+
+  const strategyLabel = _STRATEGY_LABELS[dbg.strategy] || dbg.strategy || 'vector';
+  const scoreNote = isBm25 ? ' <span class="debug-note">(BM25 scale, bars normalised)</span>' : '';
+
+  const stats = `<div class="debug-stats">
+    top <span>${dbg.top}</span> &nbsp;|&nbsp;
+    min <span>${dbg.min}</span> &nbsp;|&nbsp;
+    avg <span>${dbg.avg}</span> &nbsp;|&nbsp;
+    chunks <span>${dbg.chunks}</span> &nbsp;|&nbsp;
+    retrieve <span>${dbg.retrieve_ms}ms</span>
+    ${dbgDone ? `&nbsp;|&nbsp; generate <span>${dbgDone.generate_ms}ms</span> &nbsp;|&nbsp; total <span>${dbgDone.total_ms}ms</span>` : ''}
+  </div>`;
+
+  const panel = document.createElement('div');
+  panel.id = 'debug-panel';
+  panel.className = 'debug-panel';
+  panel.innerHTML = `<h4>Retrieval debug &mdash; <em>${strategyLabel}</em>${scoreNote}</h4>${bars}${stats}`;
+  resultCard.appendChild(panel);
+}
+
 let _apiToken = '';
 
 async function _loadToken() {
@@ -33,6 +160,7 @@ const feedbackText = document.getElementById('feedback-text');
 const feedbackSubmit = document.getElementById('feedback-submit');
 const feedbackThanks = document.getElementById('feedback-thanks');
 
+const app_js_version = 16;
 const LOADING_MESSAGES = [
   'Searching through Tenancy Tribunal decisions...',
   'Analysing relevant cases...',
@@ -44,6 +172,7 @@ let loadingInterval = null;
 let loadingStep = 0;
 let currentQuestion = '';
 let currentRating = null;
+let _debugInfo = null;
 
 // ---- Character counter ----
 questionEl.addEventListener('input', () => {
@@ -259,12 +388,288 @@ function resetToForm() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// ---- Compare mode helpers ----
+function _colId(strategy) { return 'col-' + strategy.replace(/_/g, '-'); }
+
+function _buildCompareColumns(strategies) {
+  compareGrid.innerHTML = '';
+  compareGrid.style.setProperty('--col-count', strategies.length);
+  compareGrid.style.display = 'grid';
+  loadingCard.classList.remove('visible');
+  resultCard.classList.remove('visible');
+  sourcesSection.classList.remove('visible');
+  errorCard.classList.remove('visible');
+  askAnotherRow.classList.remove('visible');
+
+  strategies.forEach(strat => {
+    const col = document.createElement('div');
+    col.className = 'compare-col';
+    col.id = _colId(strat);
+    col.innerHTML = `
+      <div class="compare-col-header">${_STRATEGY_LABELS[strat] || strat}</div>
+      <div class="compare-col-scores"></div>
+      <div class="compare-col-body">
+        <div class="compare-col-spinner"><div class="spinner-sm"></div> Waiting...</div>
+        <div class="compare-col-answer" style="display:none"></div>
+      </div>
+      <div class="compare-col-sources"></div>`;
+    compareGrid.appendChild(col);
+  });
+
+  window.scrollTo({ top: compareGrid.offsetTop - 20, behavior: 'smooth' });
+}
+
+function _colSetActive(strategy) {
+  const col = document.getElementById(_colId(strategy));
+  if (!col) return;
+  col.querySelector('.compare-col-spinner').style.display = 'flex';
+  col.querySelector('.compare-col-answer').style.display = 'none';
+  col.querySelector('.compare-col-answer').textContent = '';
+}
+
+function _colAppendToken(strategy, text) {
+  const col = document.getElementById(_colId(strategy));
+  if (!col) return;
+  const spinner = col.querySelector('.compare-col-spinner');
+  const answer = col.querySelector('.compare-col-answer');
+  if (spinner.style.display !== 'none') {
+    spinner.style.display = 'none';
+    answer.style.display = 'block';
+  }
+  answer.textContent += text;
+}
+
+function _colFinalise(strategy) {
+  const col = document.getElementById(_colId(strategy));
+  if (!col) return;
+  const answer = col.querySelector('.compare-col-answer');
+  answer.innerHTML = renderAnswer(answer.textContent);
+  _colAddFeedback(col, strategy);
+}
+
+function _colAddFeedback(col, strategy) {
+  const fb = document.createElement('div');
+  fb.className = 'col-feedback';
+  col.appendChild(fb);
+
+  // Build elements explicitly so initial visibility is unambiguous
+  const row = document.createElement('div');
+  row.className = 'col-feedback-row';
+  row.innerHTML = `<span class="col-feedback-label">Helpful?</span>`;
+  const upBtn = document.createElement('button');
+  upBtn.className = 'col-thumb col-thumb-up';
+  upBtn.title = 'Yes';
+  upBtn.textContent = '👍';
+  const downBtn = document.createElement('button');
+  downBtn.className = 'col-thumb col-thumb-down';
+  downBtn.title = 'No';
+  downBtn.textContent = '👎';
+  row.appendChild(upBtn);
+  row.appendChild(downBtn);
+  fb.appendChild(row);
+
+  const commentBox = document.createElement('div');
+  commentBox.className = 'col-feedback-comment';
+  commentBox.style.display = 'none';
+  const textarea = document.createElement('textarea');
+  textarea.className = 'col-feedback-text';
+  textarea.rows = 2;
+  textarea.placeholder = 'What could be better? (optional)';
+  const sendBtn = document.createElement('button');
+  sendBtn.className = 'col-feedback-submit btn-secondary';
+  sendBtn.textContent = 'Send';
+  commentBox.appendChild(textarea);
+  commentBox.appendChild(sendBtn);
+  fb.appendChild(commentBox);
+
+  const thanks = document.createElement('div');
+  thanks.className = 'col-feedback-thanks';
+  thanks.style.display = 'none';
+  thanks.textContent = 'Thanks!';
+  fb.appendChild(thanks);
+
+  let rating = null;
+
+  function selectRating(r) {
+    if (rating === r) {
+      rating = null;
+      upBtn.classList.remove('active');
+      downBtn.classList.remove('active');
+      commentBox.style.display = 'none';
+      return;
+    }
+    rating = r;
+    upBtn.classList.toggle('active', r === 1);
+    downBtn.classList.toggle('active', r === -1);
+    commentBox.style.display = 'block';
+  }
+
+  upBtn.addEventListener('click', () => selectRating(1));
+  downBtn.addEventListener('click', () => selectRating(-1));
+
+  sendBtn.addEventListener('click', async () => {
+    if (rating === null) return;
+    const comment = textarea.value.trim();
+    try {
+      await fetch('/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
+        body: JSON.stringify({
+          question: currentQuestion,
+          rating,
+          comment: `[${strategy}] ${comment}`.trim(),
+        }),
+      });
+    } catch (_) {}
+    row.style.display = 'none';
+    commentBox.style.display = 'none';
+    thanks.style.display = 'block';
+  });
+}
+
+function _colSetThink(strategy, text) {
+  const col = document.getElementById(_colId(strategy));
+  if (!col) return;
+  const existing = col.querySelector('.compare-col-think');
+  if (existing) return;
+  const details = document.createElement('details');
+  details.className = 'compare-col-think';
+  details.innerHTML = `<summary>Reasoning <span class="think-len">${text.length} chars</span></summary><pre>${escapeHtml(text)}</pre>`;
+  col.querySelector('.compare-col-body').insertBefore(details, col.querySelector('.compare-col-answer'));
+}
+
+function _colSetSources(strategy, sources) {
+  const col = document.getElementById(_colId(strategy));
+  if (!col) return;
+  if (!sources || !sources.length) return;
+  col.querySelector('.compare-col-sources').innerHTML =
+    '<div class="compare-sources-label">Sources</div>' +
+    sources.map((s, i) => {
+      const label = s.date ? `${s.court_name || 'Tribunal'} - ${s.date}` : (s.court_name || 'Tribunal');
+      const url = (s.url || '').startsWith('https://') ? s.url : '#';
+      return `<div class="compare-source-row"><span class="source-num">S${i+1}</span> <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a></div>`;
+    }).join('');
+}
+
+function _colSetScores(strategy, dbg) {
+  const col = document.getElementById(_colId(strategy));
+  if (!col) return;
+  const isBm25 = strategy === 'bm25';
+  const scores = dbg.scores || [];
+  const maxScore = Math.max(...scores, 0.0001);
+  col.querySelector('.compare-col-scores').innerHTML =
+    scores.map((s, i) => {
+      const pct = isBm25 ? Math.round((s / maxScore) * 100) : Math.round(s * 100);
+      const cls = isBm25 ? 'mid' : (s >= 0.80 ? 'high' : s >= 0.76 ? 'mid' : 'low');
+      return `<div class="compare-score-row"><span class="compare-score-label">S${i+1}</span><div class="compare-score-bar-wrap"><div class="debug-score-bar ${cls}" style="width:${pct}%"></div></div><span class="compare-score-val">${isBm25 ? s.toFixed(5) : s.toFixed(4)}</span></div>`;
+    }).join('') + `<div class="compare-score-stat">${dbg.retrieve_ms}ms retrieve</div>`;
+}
+
+function _colSetError(strategy, msg) {
+  const col = document.getElementById(_colId(strategy));
+  if (!col) return;
+  col.querySelector('.compare-col-spinner').style.display = 'none';
+  const answer = col.querySelector('.compare-col-answer');
+  answer.style.display = 'block';
+  answer.innerHTML = `<span class="compare-error">${escapeHtml(msg)}</span>`;
+}
+
+async function _submitCompare(question, strategies) {
+  submitBtn.disabled = true;
+  _buildCompareColumns(strategies);
+  askAnotherRow.classList.remove('visible');
+
+  let res;
+  try {
+    res = await fetch('/ask/stream/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
+      body: JSON.stringify({
+        question,
+        debug_key: _debugKey,
+        strategies,
+        thinking: document.getElementById('think-toggle').checked,
+      }),
+    });
+  } catch (_) {
+    compareGrid.style.display = 'none';
+    showError('Could not connect to the server.');
+    submitBtn.disabled = false;
+    return;
+  }
+
+  if (!res.ok) {
+    compareGrid.style.display = 'none';
+    showError('Compare request failed.');
+    submitBtn.disabled = false;
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const colAnswers = {};
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+        const raw = buffer.slice(0, boundary).trim();
+        buffer = buffer.slice(boundary + 2);
+        if (!raw.startsWith('data: ')) continue;
+        let ev;
+        try { ev = JSON.parse(raw.slice(6)); } catch (_) { continue; }
+
+        const s = ev.strategy;
+        if (ev.type === 'col_start') {
+          _colSetActive(s);
+          colAnswers[s] = '';
+        } else if (ev.type === 'col_sources') {
+          _colSetSources(s, ev.sources);
+        } else if (ev.type === 'col_debug') {
+          _colSetScores(s, ev);
+        } else if (ev.type === 'col_think') {
+          _colSetThink(s, ev.text);
+        } else if (ev.type === 'col_token') {
+          colAnswers[s] = (colAnswers[s] || '') + ev.text;
+          _colAppendToken(s, ev.text);
+        } else if (ev.type === 'col_done') {
+          _colFinalise(s);
+        } else if (ev.type === 'col_error') {
+          _colSetError(s, ev.message);
+        } else if (ev.type === 'all_done') {
+          askAnotherRow.classList.add('visible');
+        }
+      }
+    }
+  } catch (_) {
+    // stream ended - finalise whatever we have
+    Object.keys(colAnswers).forEach(s => _colFinalise(s));
+  }
+  submitBtn.disabled = false;
+}
+
 // ---- Form submit (SSE streaming) ----
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const question = questionEl.value.trim();
   if (!question) { questionEl.focus(); return; }
   currentQuestion = question;
+
+  const strategies = _debugMode ? _getSelectedStrategies() : ['vector'];
+  if (strategies.length === 0) {
+    showError('Select at least one strategy.');
+    return;
+  }
+
+  if (_debugMode && strategies.length > 1) {
+    await _submitCompare(question, strategies);
+    return;
+  }
+
   showLoading();
 
   let res;
@@ -272,7 +677,11 @@ form.addEventListener('submit', async (e) => {
     res = await fetch('/ask/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({
+        question,
+        debug_key: _debugKey,
+        strategy: strategies[0] || 'vector',
+      }),
     });
   } catch (_) {
     showError('Could not connect to the server. Please check your connection and try again.');
@@ -320,6 +729,10 @@ form.addEventListener('submit', async (e) => {
         if (event.type === 'sources') {
           streamedSources = event.sources;
           renderSources(streamedSources);
+        } else if (event.type === 'debug') {
+          _debugInfo = event;
+        } else if (event.type === 'debug_done') {
+          if (_debugInfo) _renderDebugPanel(_debugInfo, event);
         } else if (event.type === 'token') {
           if (!streamingStarted) {
             streamingStarted = true;
@@ -371,6 +784,7 @@ function initDisclaimer() {
 
 // ---- Init ----
 _loadToken();
+_initDebugShortcut();
 pollQueue();
 setInterval(pollQueue, 15000);
 initDisclaimer();

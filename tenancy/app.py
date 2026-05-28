@@ -4,6 +4,7 @@ Wraps the existing RAG pipeline with NZTT-only filtering,
 a tenancy-focused system prompt, and a fair queue.
 """
 
+import asyncio
 import json
 import os
 import re
@@ -32,7 +33,8 @@ _TENANCY_SYSTEM_PROMPT = """You are a free legal research assistant helping New 
 their rights based on real Tenancy Tribunal decisions.
 
 Rules:
-- Answer only from the provided Tenancy Tribunal decisions. Do not invent cases, laws, or dates.
+- The governing legislation is the Residential Tenancies Act 1986 (RTA 1986). Never name any other Act. If the sources cite a section, use that section number; if not, do not invent one.
+- Answer only from the provided Tenancy Tribunal decisions. Do not invent cases, laws, section numbers, or dates.
 - Cite every claim with [SN] notation (e.g. [S1], [S2]) matching the source index. Never use other citation formats.
 - Use plain, simple English that any tenant can understand. Explain legal terms when you use them.
 - Be empathetic - users may be stressed about their housing situation.
@@ -44,6 +46,7 @@ communitylaw.org.nz or Tenancy Services on 0800 836 262."
 
 _pipeline: RAGPipeline | None = None
 _PUBLIC_TOKEN = os.getenv("TENANCY_API_TOKEN", "")
+_DEBUG_KEY = os.getenv("TENANCY_DEBUG_KEY", "")
 
 _ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
 _MAX_BODY_BYTES = 20_480  # 20 KB
@@ -157,6 +160,16 @@ async def token() -> dict:
     return {"token": _PUBLIC_TOKEN}
 
 
+@app.get("/debug/ping")
+async def debug_ping(request: Request) -> dict:
+    """Validate the debug key without running a full request."""
+    _check_token(request)
+    key = request.headers.get("X-Debug-Key", "")
+    if not (_DEBUG_KEY and key == _DEBUG_KEY):
+        raise HTTPException(status_code=403, detail={"error": "Invalid debug key."})
+    return {"ok": True}
+
+
 async def _check_llm() -> None:
     try:
         async with httpx.AsyncClient(timeout=3) as client:
@@ -185,8 +198,20 @@ _FEEDBACK_COOLDOWN_S = 30
 _feedback_last: TTLCache = TTLCache(maxsize=2000, ttl=_FEEDBACK_COOLDOWN_S)
 
 
+_VALID_STRATEGIES = {"vector", "vector_no_legal", "mmr", "bm25"}
+
+
 class AskRequest(BaseModel):
     question: str
+    debug_key: str = ""
+    strategy: str = "vector"
+
+
+class CompareRequest(BaseModel):
+    question: str
+    debug_key: str
+    strategies: list[str]
+    thinking: bool = False
 
 
 class FeedbackRequest(BaseModel):
@@ -241,18 +266,39 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
     ip = await acquire(request)
 
+    debug_mode = bool(_DEBUG_KEY and req.debug_key == _DEBUG_KEY)
+    strategy = req.strategy if debug_mode and req.strategy in _VALID_STRATEGIES else "vector"
+
     async def _event_stream():
+        import time
+        t0 = time.monotonic()
         try:
-            context_texts, sources = await _pipeline.retrieve(question, top_k=5, min_score=0.75, min_chunks=2)
+            # BM25 uses a different score scale - skip cosine min_score filter
+            retrieve_kwargs: dict = {"top_k": 5, "strategy": strategy}
+            if strategy != "bm25":
+                retrieve_kwargs.update({"min_score": 0.75, "min_chunks": 2})
+            else:
+                retrieve_kwargs["min_chunks"] = 1
+            context_texts, sources = await _pipeline.retrieve(question, **retrieve_kwargs)
+            t_retrieve = time.monotonic() - t0
+
             if not context_texts:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'I could not find enough relevant Tenancy Tribunal decisions to answer this question reliably. This tool covers NZ residential tenancy matters only.'})}\n\n"
                 return
 
-            public_sources = [{k: v for k, v in s.items() if k != "title"} for s in sources]
+            public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
             yield f"data: {json.dumps({'type': 'sources', 'sources': public_sources})}\n\n"
 
+            if debug_mode:
+                scores = [s["_score"] for s in sources]
+                yield f"data: {json.dumps({'type': 'debug', 'strategy': strategy, 'retrieve_ms': round(t_retrieve * 1000), 'scores': scores, 'top': max(scores), 'min': min(scores), 'avg': round(sum(scores) / len(scores), 4), 'chunks': len(scores)})}\n\n"
+
+            t_gen = time.monotonic()
             async for token in _pipeline._generator.generate_stream(question, context_texts, sources):
                 yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+
+            if debug_mode:
+                yield f"data: {json.dumps({'type': 'debug_done', 'generate_ms': round((time.monotonic() - t_gen) * 1000), 'total_ms': round((time.monotonic() - t0) * 1000)})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as exc:
@@ -267,6 +313,116 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+@app.post("/ask/stream/compare")
+async def ask_stream_compare(req: CompareRequest, request: Request) -> StreamingResponse:
+    """Debug-only multi-strategy comparison. Runs all strategies in parallel."""
+    _check_token(request)
+    if not (_DEBUG_KEY and req.debug_key == _DEBUG_KEY):
+        raise HTTPException(status_code=403, detail={"error": "Debug key required."})
+    await _check_llm()
+
+    question = _sanitize_question(req.question.strip())
+    if not question:
+        raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
+    if len(question) > 5000:
+        raise HTTPException(status_code=400, detail={"error": "Question too long."})
+
+    strategies = [s for s in req.strategies if s in _VALID_STRATEGIES][:4]
+    if not strategies:
+        raise HTTPException(status_code=400, detail={"error": "No valid strategies selected."})
+
+    thinking = req.thinking
+    ip = await acquire(request)
+
+    async def _compare_stream():
+        import time
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _run_strategy(strat: str, col_idx: int) -> None:
+            t0 = time.monotonic()
+            await queue.put({"type": "col_start", "strategy": strat, "col": col_idx})
+
+            retrieve_kwargs: dict = {"top_k": 5, "strategy": strat}
+            if strat != "bm25":
+                retrieve_kwargs.update({"min_score": 0.75, "min_chunks": 2})
+            else:
+                retrieve_kwargs["min_chunks"] = 1
+
+            try:
+                context_texts, sources = await _pipeline.retrieve(question, **retrieve_kwargs)
+            except Exception as exc:
+                await queue.put({"type": "col_error", "strategy": strat, "message": str(exc)})
+                return
+
+            t_retrieve = time.monotonic() - t0
+
+            if not context_texts:
+                await queue.put({"type": "col_error", "strategy": strat, "message": "No relevant decisions found for this strategy."})
+                return
+
+            public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
+            scores = [s["_score"] for s in sources]
+            await queue.put({"type": "col_sources", "strategy": strat, "sources": public_sources})
+            await queue.put({"type": "col_debug", "strategy": strat, "retrieve_ms": round(t_retrieve * 1000), "scores": scores, "top": max(scores), "min": min(scores), "avg": round(sum(scores) / len(scores), 4), "chunks": len(scores)})
+
+            in_think = False
+            think_parts: list[str] = []
+            t_gen = time.monotonic()
+
+            try:
+                async for token in _pipeline._generator.generate_stream(
+                    question, context_texts, sources, thinking=thinking
+                ):
+                    if "<think>" in token:
+                        in_think = True
+                        token = token.replace("<think>", "")
+                    if "</think>" in token:
+                        before, _, after = token.partition("</think>")
+                        if before:
+                            think_parts.append(before)
+                        in_think = False
+                        if think_parts:
+                            await queue.put({"type": "col_think", "strategy": strat, "text": "".join(think_parts)})
+                            think_parts = []
+                        token = after
+                    if in_think:
+                        think_parts.append(token)
+                        continue
+                    if token:
+                        await queue.put({"type": "col_token", "strategy": strat, "text": token})
+            except Exception as exc:
+                await queue.put({"type": "col_error", "strategy": strat, "message": str(exc)})
+                return
+
+            await queue.put({"type": "col_done", "strategy": strat, "generate_ms": round((time.monotonic() - t_gen) * 1000), "total_ms": round((time.monotonic() - t0) * 1000)})
+
+        tasks = [asyncio.create_task(_run_strategy(s, i)) for i, s in enumerate(strategies)]
+        finished = 0
+        total = len(strategies)
+
+        try:
+            while finished < total:
+                event = await queue.get()
+                yield f"data: {json.dumps(event)}\n\n"
+                if event["type"] in ("col_done", "col_error"):
+                    finished += 1
+
+            yield f"data: {json.dumps({'type': 'all_done'})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'col_error', 'strategy': 'all', 'message': str(exc)})}\n\n"
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            release(ip)
+
+    return StreamingResponse(
+        _compare_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
