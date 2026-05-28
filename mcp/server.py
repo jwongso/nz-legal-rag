@@ -105,6 +105,72 @@ async def get_case(case_id: str) -> str:
 
 
 @mcp.tool()
+async def search_legislation(
+    query: str,
+    act: str = "",
+    top_k: int = 5,
+) -> str:
+    """
+    Search NZ legislation sections by topic or section reference.
+
+    Returns the raw section text from the Act - no LLM generation, just the actual law.
+    Use this to look up what a specific section says, verify a section number, or find
+    which sections cover a topic.
+
+    Args:
+        query: Topic or section to find, e.g. "landlord right of entry" or "section 48 notice to terminate".
+        act: Optional act code to restrict to one Act. Options:
+               RTA      - Residential Tenancies Act 1986
+               ERA2000  - Employment Relations Act 2000
+               PA2020   - Privacy Act 2020
+               CCLA2017 - Contract and Commercial Law Act 2017
+               CA1993   - Companies Act 1993
+               CRA1961  - Crimes Act 1961
+             Leave empty to search all indexed legislation.
+        top_k: Number of sections to return (default 5, max 20).
+    """
+    pipeline = _get_pipeline()
+    query_vector = await pipeline._embedder.embed(query)
+
+    raw_hits = pipeline._store.search(
+        query_vector,
+        top_k=min(top_k, 20) * 4,
+        courts=["NZLEG"],
+    )
+
+    act_prefix = f"NZLEG/{act.upper().strip()}/" if act.strip() else ""
+    if act_prefix:
+        raw_hits = [h for h in raw_hits if h.case_id.startswith(act_prefix)]
+
+    # One chunk per section (each section is its own case_id in NZLEG)
+    seen: set[str] = set()
+    hits = []
+    for h in raw_hits:
+        if h.case_id not in seen:
+            seen.add(h.case_id)
+            hits.append(h)
+        if len(hits) >= min(top_k, 20):
+            break
+
+    if not hits:
+        act_label = f" in {act.upper()}" if act.strip() else ""
+        return f"No matching legislation sections found{act_label}."
+
+    lines: list[str] = [f"Found {len(hits)} section(s) matching '{query}':\n"]
+    for h in hits:
+        lines.append(f"## {h.title}")
+        lines.append(f"Citation: {h.case_id}  |  Score: {h.score:.4f}")
+        lines.append(f"URL: {h.url}")
+        lines.append("")
+        lines.append(h.text)
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def list_courts() -> str:
     """List all courts in the index with their decision counts."""
     store = _get_pipeline()._store
