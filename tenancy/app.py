@@ -46,7 +46,7 @@ _pipeline: RAGPipeline | None = None
 _PUBLIC_TOKEN = os.getenv("TENANCY_API_TOKEN", "")
 
 _ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
-_MAX_BODY_BYTES = 10_240  # 10 KB
+_MAX_BODY_BYTES = 20_480  # 20 KB
 
 # Common prompt injection patterns
 _INJECTION_RE = re.compile(
@@ -202,8 +202,8 @@ async def ask(req: AskRequest, request: Request) -> dict:
     question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
-    if len(question) > 2000:
-        raise HTTPException(status_code=400, detail={"error": "Question too long (max 2000 characters)."})
+    if len(question) > 5000:
+        raise HTTPException(status_code=400, detail={"error": "Question too long (max 5000 characters)."})
 
     ip = await acquire(request)
     try:
@@ -236,8 +236,8 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
     question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
-    if len(question) > 2000:
-        raise HTTPException(status_code=400, detail={"error": "Question too long (max 2000 characters)."})
+    if len(question) > 5000:
+        raise HTTPException(status_code=400, detail={"error": "Question too long (max 5000 characters)."})
 
     ip = await acquire(request)
 

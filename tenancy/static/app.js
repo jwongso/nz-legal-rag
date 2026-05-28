@@ -49,7 +49,7 @@ let currentRating = null;
 questionEl.addEventListener('input', () => {
   const len = questionEl.value.length;
   charCountEl.textContent = len;
-  charCountEl.parentElement.classList.toggle('near-limit', len > 1800);
+  charCountEl.parentElement.classList.toggle('near-limit', len > 4500);
 });
 
 // ---- Example question buttons ----

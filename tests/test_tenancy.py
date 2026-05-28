@@ -97,14 +97,14 @@ def test_ask_whitespace_only_rejected(client):
 
 
 def test_ask_too_long_rejected(client):
-    r = client.post("/ask", headers=_TOKEN_HEADERS, json={"question": "x" * 2001})
+    r = client.post("/ask", headers=_TOKEN_HEADERS, json={"question": "x" * 5001})
     assert r.status_code == 400
 
 
 def test_ask_exactly_at_limit_accepted(client):
-    # 2000 chars is within limit - should not be rejected for length
+    # 5000 chars is within limit - should not be rejected for length
     # (may fail with 503 if LLM unavailable, but not 400)
-    r = client.post("/ask", headers=_TOKEN_HEADERS, json={"question": "x" * 2000})
+    r = client.post("/ask", headers=_TOKEN_HEADERS, json={"question": "x" * 5000})
     assert r.status_code != 400
 
 
@@ -201,7 +201,7 @@ def test_ask_stream_empty_question_rejected(client):
 
 
 def test_ask_stream_too_long_rejected(client):
-    r = client.post("/ask/stream", headers=_TOKEN_HEADERS, json={"question": "x" * 2001})
+    r = client.post("/ask/stream", headers=_TOKEN_HEADERS, json={"question": "x" * 5001})
     assert r.status_code == 400
 
 
