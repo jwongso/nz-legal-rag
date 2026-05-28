@@ -12,6 +12,8 @@ Run:
 """
 
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 import httpx
@@ -43,6 +45,19 @@ def _qdrant_available() -> bool:
         return resp.status_code == 200
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Frontend rendering (JS)
+# ---------------------------------------------------------------------------
+
+def test_js_rendering():
+    """Run tests/test_rendering.js via Node.js - covers renderAnswer() and escapeHtml()."""
+    script = Path(__file__).parent / "test_rendering.js"
+    result = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert result.returncode == 0, (
+        f"JS rendering tests failed:\n{result.stdout}\n{result.stderr}"
+    )
 
 
 # ---------------------------------------------------------------------------
