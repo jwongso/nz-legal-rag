@@ -136,6 +136,11 @@ no Playwright). Decision text is embedded in the Solr `document_text_abstract` f
 Source: Ministry of Justice, forms.justice.govt.nz. Decision links point to NZLII
 individual pages (linking is not scraping).
 
+MoJ decisions are also mirrored into PostgreSQL (`ingest/moj_to_pg.py`) for BM25
+full-text search alongside the vector index. This gives the Tenancy tool two independent
+retrieval paths: Qdrant semantic search and PostgreSQL keyword search on the same 31,240
+decisions.
+
 **Current coverage:**
 
 | Court | Coverage |
@@ -152,7 +157,7 @@ individual pages (linking is not scraping).
 | NZLCDT | 1996-2021 |
 | NZHRRT | 1996-2021 |
 | NZREADT | 1996-2021 |
-| NZTT | 2022-2024 |
+| NZTT | 2022-2024 (NZLII) + 2023-2026 (MoJ, 31,240 decisions in PostgreSQL) |
 
 2.8M+ chunks indexed. All sources are publicly available. No proprietary data required.
 
@@ -330,6 +335,21 @@ q = build_bm25_query("section 103A Employment Relations Act")
 Benchmarked result: global BM25 hybrid caused 6 coverage regressions vs vector-only
 baseline. Conditional BM25 (this design) shows zero regressions and adds BM25 signal
 only where exact matching is reliable. See `BENCHMARK.md` for full results.
+
+**Tenancy tool BM25 (`db/filter.py:bm25_tenancy`)** uses a two-pass strategy tuned
+for natural-language questions against the NZTT-only corpus:
+
+1. **Pass 1 - AND query:** all prepared terms must co-occur. Fast via GIN index.
+   Works well for rare or specific terms (statute sections, proper nouns).
+2. **Pass 2 - OR fallback:** if AND returns nothing, retries with only low-frequency
+   terms (not in a high-frequency blocklist of ~40 common legal words like "damage",
+   "order", "reasonable"). This avoids scanning the 94k+ chunks that match "damage"
+   alone while still finding relevant results for semantic questions.
+
+A domain-specific stopword list strips NL question words and high-frequency legal
+boilerplate (`tenancy`, `act`, `section`, `landlord`, `tribunal`) from the query
+before either pass, since these appear in virtually every NZTT decision and carry
+no discriminating signal. Retrieval time: ~25ms (vs 11.5s before the two-pass design).
 
 ---
 
@@ -693,8 +713,8 @@ Available tools:
 
 This project runs on a single machine with a consumer GPU. No Blackwell required.
 
-Current inference: llama-server with Qwen3-8B-Q4_K_M, fully on GPU (RTX 4060 Laptop,
-8GB VRAM), 12288 context, ~44 tok/s generation.
+Current inference: llama-server with Qwen3-8B-Q5_K_M, fully on GPU (RTX 4060 Laptop,
+8GB VRAM), ctx-size 4096, --parallel 2 --kv-unified, ~59 tok/s generation.
 
 Embeddings: nomic-embed-text-v1.5 via sentence-transformers. Auto-selects CUDA at
 startup (rag/device.py) - uses GPU for bulk ingest, falls back to CPU at query time
@@ -744,6 +764,10 @@ nz-legal-tunnel (Cloudflare). All start automatically on login.
 - [x] Heuristic court planner (`rag/court_planner.py`) - domain signals to court/year filter with no LLM call, oracle-equivalent H@5(r)=1.00
 - [x] Conditional BM25 (`rag/bm25_query.py`) - statute/section/citation queries only, OR-joined anchors, RRF-fused
 - [x] 30-query retrieval benchmark suite with gold dataset, planner analysis, and locked production config
+- [x] MoJ Tenancy Tribunal decisions mirrored to PostgreSQL (`ingest/moj_to_pg.py`) - 31,240 decisions, 694,005 chunks, enables BM25 on tenancy tool
+- [x] Tenancy BM25 two-pass retrieval - AND first, OR fallback with low-frequency terms only; domain stopwords strip legal boilerplate; 460x speedup vs naive OR scan
+- [x] Multi-strategy retrieval on tenancy tool: vector, vector (no rerank), MMR, BM25 selectable per request
+- [x] Concurrent request queue with per-IP fairness for the public tenancy tool
 
 ### Near-term (current hardware)
 
