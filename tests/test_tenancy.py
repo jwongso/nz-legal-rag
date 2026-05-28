@@ -241,6 +241,84 @@ def test_ask_stream_returns_sse_events(client):
     assert '"type"' in body
 
 
+def _parse_sse_events(body: str) -> list[dict]:
+    """Parse SSE body text into a list of event dicts."""
+    import json as _json
+    events = []
+    for chunk in body.split("\n\n"):
+        chunk = chunk.strip()
+        if not chunk.startswith("data: "):
+            continue
+        try:
+            events.append(_json.loads(chunk[6:]))
+        except Exception:
+            continue
+    return events
+
+
+@pytest.mark.skipif(not _llm_available(), reason="llama-server not running")
+def test_ask_stream_event_sequence(client):
+    """SSE events must arrive in order: sources -> token(s) -> done."""
+    r = client.post("/ask/stream", headers=_TOKEN_HEADERS,
+                    json={"question": "What is fair wear and tear?"})
+    assert r.status_code == 200
+    events = _parse_sse_events(r.text)
+    types = [e["type"] for e in events]
+
+    assert types[0] == "sources", f"First event should be 'sources', got '{types[0]}'"
+    assert types[-1] == "done", f"Last event should be 'done', got '{types[-1]}'"
+    token_types = types[1:-1]
+    assert all(t == "token" for t in token_types), (
+        f"Middle events should all be 'token', got: {set(token_types)}"
+    )
+    assert len(token_types) > 0, "Expected at least one token event"
+
+
+@pytest.mark.skipif(not _llm_available(), reason="llama-server not running")
+def test_ask_stream_token_concat_is_valid_answer(client):
+    """Concatenated tokens should form a meaningful answer with citations."""
+    r = client.post("/ask/stream", headers=_TOKEN_HEADERS,
+                    json={"question": "Can a landlord increase rent more than once per year?"})
+    assert r.status_code == 200
+    events = _parse_sse_events(r.text)
+    tokens = [e["text"] for e in events if e.get("type") == "token"]
+    full_answer = "".join(tokens)
+
+    assert len(full_answer) > 50, f"Answer too short ({len(full_answer)} chars)"
+    assert "[S" in full_answer, "Answer has no [SN] citations"
+
+
+@pytest.mark.skipif(not _llm_available(), reason="llama-server not running")
+def test_ask_stream_sources_no_title(client):
+    """Sources event must not expose title (party names)."""
+    r = client.post("/ask/stream", headers=_TOKEN_HEADERS,
+                    json={"question": "What notice must a landlord give before entering?"})
+    assert r.status_code == 200
+    events = _parse_sse_events(r.text)
+    sources_events = [e for e in events if e.get("type") == "sources"]
+    assert len(sources_events) == 1, "Expected exactly one sources event"
+    for s in sources_events[0]["sources"]:
+        assert "title" not in s, "title (party names) must not be in stream sources"
+        assert "case_id" in s
+        assert "court_name" in s
+        assert "url" in s
+
+
+@pytest.mark.skipif(not _llm_available(), reason="llama-server not running")
+def test_ask_stream_sources_urls_are_nzlii(client):
+    """Source URLs in stream must point to NZLII."""
+    r = client.post("/ask/stream", headers=_TOKEN_HEADERS,
+                    json={"question": "What happens if a landlord does not lodge the bond?"})
+    assert r.status_code == 200
+    events = _parse_sse_events(r.text)
+    sources_events = [e for e in events if e.get("type") == "sources"]
+    assert len(sources_events) == 1
+    for s in sources_events[0]["sources"]:
+        assert s["url"].startswith("https://www.nzlii.org/"), (
+            f"Stream source URL not NZLII: {s['url']}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Feedback endpoint
 # ---------------------------------------------------------------------------

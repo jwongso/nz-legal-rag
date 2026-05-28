@@ -275,5 +275,60 @@ console.log('\nrenderAnswer - mixed content');
 
 // ---- Summary ----
 
+console.log('\nrenderAnswer - streaming edge cases');
+
+{
+  // Empty string (e.g. stream ended before any tokens)
+  const h = renderAnswer('');
+  assert('empty string -> empty <p>',  h === '<p></p>' || h === '');
+}
+
+{
+  // Leading/trailing newlines (LLM sometimes starts with blank lines)
+  const h = renderAnswer('\n\nActual answer here.\n\n');
+  assert('leading/trailing newlines trimmed', contains(h, '<p>Actual answer here.</p>'));
+  assert('no empty <p> before content',     notContains(h, '<p></p>'));
+}
+
+{
+  // Incomplete bold — unclosed ** (LLM cut off mid-token)
+  const h = renderAnswer('This is **incomplete bold');
+  assert('incomplete bold is safe HTML',   contains(h, '**incomplete bold'));
+  assert('no dangling <strong> tag',       notContains(h, '<strong>incomplete bold'));
+}
+
+{
+  // Unclosed citation bracket [S without closing ]
+  const h = renderAnswer('See source [S1] and partial [S');
+  assert('closed citation rendered',    contains(h, '<span class="citation">[S1]</span>'));
+  assert('unclosed [S left as text',    contains(h, '[S'));
+}
+
+{
+  // Only whitespace/newlines
+  const h = renderAnswer('   \n\n   ');
+  assert('whitespace-only -> empty output', h === '<p></p>' || h === '');
+}
+
+{
+  // Single line with trailing \\n (common in streaming: last token is \\n)
+  const h = renderAnswer('Answer text.\n');
+  assert('trailing single newline handled', contains(h, 'Answer text.'));
+}
+
+{
+  // Bold spanning multiple tokens (accumulated during streaming)
+  const h = renderAnswer('The **key point** is important and **another** too.');
+  assert('multiple bold spans rendered', 
+    contains(h, '<strong>key point</strong>') && contains(h, '<strong>another</strong>'));
+}
+
+{
+  // Numbered list with only one item (common in short answers)
+  const h = renderAnswer('1. Only one item here.');
+  assert('single numbered item -> ol',  contains(h, '<ol>'));
+  assert('single item has value="1"',   contains(h, 'value="1"'));
+}
+
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
