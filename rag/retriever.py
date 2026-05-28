@@ -96,6 +96,19 @@ class VectorStore:
                     field_schema="keyword" if field == "court" else "integer",
                 )
 
+    def case_ids_exist(self, case_ids: list[str]) -> set[str]:
+        """Return the subset of case_ids already present in the collection.
+
+        Checks for chunk_index=0 of each case - fast O(1) point lookup by ID.
+        """
+        point_ids = [_point_id(cid, 0) for cid in case_ids]
+        results = self._client.retrieve(
+            collection_name=self._collection,
+            ids=point_ids,
+            with_payload=["case_id"],
+        )
+        return {r.payload["case_id"] for r in results}
+
     def upsert(self, vectors: list[list[float]], payloads: list[dict[str, Any]]) -> None:
         points = [
             PointStruct(
