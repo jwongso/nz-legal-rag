@@ -40,13 +40,13 @@ _RETRY_BACKOFFS = [30, 60, 120, 300, 600, 900]  # last value repeats indefinitel
 
 
 def _fetch_solr(start: int = 0, rows: int = _PAGE_SIZE, since_date: str | None = None) -> dict:
-    fq = ["jurisdictionCode_s:TT"]
+    # Proxy ignores multiple fq params - combine all conditions into one
+    fq = "jurisdictionCode_s:TT"
     if since_date:
-        # since_date is YYYY-MM-DD; Solr expects ISO-8601 datetime
-        fq.append(f"publishedDate_dt:[{since_date}T00:00:00Z TO *]")
+        fq += f" AND publishedDate_dt:[{since_date}T00:00:00Z TO *]"
     params = [
         ("q", "jurisdictionCode_s:TT"),
-        *[("fq", f) for f in fq],
+        ("fq", fq),
         ("rows", str(rows)),
         ("start", str(start)),
         ("fl", (
