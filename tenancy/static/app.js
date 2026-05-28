@@ -88,24 +88,41 @@ function renderAnswer(text) {
   // interfere with list detection - e.g. **3. Item** would break ^\d+\. )
   const html = text.split(/\n{2,}/).map(para => {
     const lines = para.split('\n');
+
     if (lines.some(l => /^[-*] /.test(l.trim()))) {
-      const items = lines
-        .filter(l => /^[-*] /.test(l.trim()))
-        .map(l => `<li>${l.trim().replace(/^[-*] /, '')}</li>`)
-        .join('');
-      return `<ul>${items}</ul>`;
+      // Accumulate continuation lines into the current bullet item
+      const items = [];
+      let cur = null;
+      for (const line of lines) {
+        if (/^[-*] /.test(line.trim())) {
+          if (cur !== null) items.push(cur);
+          cur = line.trim().replace(/^[-*] /, '').replace(/  $/, '');
+        } else if (cur !== null && line.trim()) {
+          cur += ' ' + line.trim();
+        }
+      }
+      if (cur !== null) items.push(cur);
+      return `<ul>${items.map(t => `<li>${t}</li>`).join('')}</ul>`;
     }
+
     if (lines.some(l => /^\d+\. /.test(l.trim()))) {
-      const items = lines
-        .filter(l => /^\d+\. /.test(l.trim()))
-        .map(l => {
-          const m = l.trim().match(/^(\d+)\. (.*)/);
-          return m ? `<li value="${m[1]}">${m[2]}</li>` : `<li>${l.trim()}</li>`;
-        })
-        .join('');
-      return `<ol>${items}</ol>`;
+      // Accumulate continuation lines into the current numbered item
+      const items = [];
+      let cur = null;
+      for (const line of lines) {
+        const m = line.trim().match(/^(\d+)\. (.*)/);
+        if (m) {
+          if (cur) items.push(cur);
+          cur = { num: m[1], text: m[2].replace(/  $/, '') };
+        } else if (cur && line.trim()) {
+          cur.text += ' ' + line.trim();
+        }
+      }
+      if (cur) items.push(cur);
+      return `<ol>${items.map(it => `<li value="${it.num}">${it.text}</li>`).join('')}</ol>`;
     }
-    return `<p>${lines.join('<br>')}</p>`;
+
+    return `<p>${lines.map(l => l.replace(/  $/, '')).join('<br>')}</p>`;
   }).join('');
 
   // Apply inline formatting after structure is built
