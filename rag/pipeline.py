@@ -179,8 +179,14 @@ class RAGPipeline:
         self,
         question: str,
         top_k: int = config.TOP_K,
+        min_score: float = 0.0,
+        min_chunks: int = 1,
     ) -> tuple[list[str], list[dict]]:
-        """Embed + Qdrant search + dedup + rerank. Returns (context_texts, sources)."""
+        """Embed + Qdrant search + dedup + rerank. Returns (context_texts, sources).
+
+        min_score: drop individual chunks below this cosine similarity score.
+        min_chunks: return empty if fewer than this many chunks survive filtering.
+        """
         query_vector = await self._embedder.embed(question)
         raw_hits = self._store.search(query_vector, top_k=top_k * 3)
         if not raw_hits:
@@ -194,6 +200,10 @@ class RAGPipeline:
             hits = self._reranker.rerank(question, candidates, top_k)
         else:
             hits = hits[:top_k]
+        if min_score > 0.0:
+            hits = [h for h in hits if h.score >= min_score]
+        if len(hits) < min_chunks:
+            return [], []
         context_texts = [h.text for h in hits]
         sources = [
             {

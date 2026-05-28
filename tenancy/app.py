@@ -243,9 +243,9 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
     async def _event_stream():
         try:
-            context_texts, sources = await _pipeline.retrieve(question, top_k=5)
+            context_texts, sources = await _pipeline.retrieve(question, top_k=5, min_score=0.75, min_chunks=2)
             if not context_texts:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'No relevant decisions found for this question.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': 'I could not find enough relevant Tenancy Tribunal decisions to answer this question reliably. This tool covers NZ residential tenancy matters only.'})}\n\n"
                 return
 
             public_sources = [{k: v for k, v in s.items() if k != "title"} for s in sources]
