@@ -45,6 +45,7 @@ class Generator:
     async def generate_stream(
         self, question: str, context_chunks: list[str], sources: list[dict],
         thinking: bool = False,
+        legislation_anchor: str | None = None,
     ) -> AsyncIterator[str]:
         """Yield raw token strings from the LLM as they arrive."""
         truncated = [c[:1500] for c in context_chunks]
@@ -56,7 +57,11 @@ class Generator:
             f"{s.get('date', '')} | {s.get('url', '')}"
             for i, s in enumerate(sources)
         )
+        anchor_block = (
+            f"{legislation_anchor}\n\n---\n\n" if legislation_anchor else ""
+        )
         user_message = (
+            f"{anchor_block}"
             f"Source index:\n{source_header}\n\n"
             f"Context documents (numbered to match source index):\n\n{context_block}\n\n"
             f"---\n\nQuestion: {question}\n\n"

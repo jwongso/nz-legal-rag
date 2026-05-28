@@ -45,6 +45,7 @@ communitylaw.org.nz or Tenancy Services on 0800 836 262."
 """
 
 _pipeline: RAGPipeline | None = None
+_leg_store: VectorStore | None = None  # nz_legal collection for RTA anchor chunks
 _PUBLIC_TOKEN = os.getenv("TENANCY_API_TOKEN", "")
 _DEBUG_KEY = os.getenv("TENANCY_DEBUG_KEY", "")
 
@@ -112,13 +113,48 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _pipeline
+    global _pipeline, _leg_store
     _pipeline = RAGPipeline()
     _pipeline._generator = Generator(system_prompt=_TENANCY_SYSTEM_PROMPT)
     _pipeline._store = VectorStore(collection=config.QDRANT_TENANCY_COLLECTION)
+    _leg_store = VectorStore(collection=config.QDRANT_COLLECTION)
     yield
     if _pipeline:
         await _pipeline.close()
+
+
+async def _retrieve_rta_anchor(question: str) -> str:
+    """Return the top 2 RTA sections most relevant to the question as a grounding preamble.
+
+    Injected before the numbered [S1]-[SN] block so the LLM reads the actual Act text
+    and cites correct section numbers without hallucinating them.
+    """
+    if _leg_store is None or _pipeline is None:
+        return ""
+    try:
+        vector = await _pipeline._embedder.embed(question)
+        raw = _leg_store.search(vector, top_k=12, courts=["NZLEG"])
+        rta = [h for h in raw if h.case_id.startswith("NZLEG/RTA/")]
+        seen: set[str] = set()
+        hits = []
+        for h in rta:
+            if h.case_id not in seen:
+                seen.add(h.case_id)
+                hits.append(h)
+            if len(hits) >= 2:
+                break
+        if not hits:
+            return ""
+        lines = [
+            "Relevant sections of the Residential Tenancies Act 1986 "
+            "(legislative context - use for grounding section numbers only, "
+            "do not cite with [SN] notation):"
+        ]
+        for h in hits:
+            lines.append(f"\n{h.title}\n{h.text[:600]}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
 
 
 _STATIC = Path(__file__).parent / "static"
@@ -293,8 +329,9 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
                 scores = [s["_score"] for s in sources]
                 yield f"data: {json.dumps({'type': 'debug', 'strategy': strategy, 'retrieve_ms': round(t_retrieve * 1000), 'scores': scores, 'top': max(scores), 'min': min(scores), 'avg': round(sum(scores) / len(scores), 4), 'chunks': len(scores)})}\n\n"
 
+            anchor = await _retrieve_rta_anchor(question)
             t_gen = time.monotonic()
-            async for token in _pipeline._generator.generate_stream(question, context_texts, sources):
+            async for token in _pipeline._generator.generate_stream(question, context_texts, sources, legislation_anchor=anchor or None):
                 yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
 
             if debug_mode:
@@ -368,13 +405,15 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
             await queue.put({"type": "col_sources", "strategy": strat, "sources": public_sources})
             await queue.put({"type": "col_debug", "strategy": strat, "retrieve_ms": round(t_retrieve * 1000), "scores": scores, "top": max(scores), "min": min(scores), "avg": round(sum(scores) / len(scores), 4), "chunks": len(scores)})
 
+            anchor = await _retrieve_rta_anchor(question)
             in_think = False
             think_parts: list[str] = []
             t_gen = time.monotonic()
 
             try:
                 async for token in _pipeline._generator.generate_stream(
-                    question, context_texts, sources, thinking=thinking
+                    question, context_texts, sources, thinking=thinking,
+                    legislation_anchor=anchor or None,
                 ):
                     if "<think>" in token:
                         in_think = True
