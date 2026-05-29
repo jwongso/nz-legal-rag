@@ -1144,3 +1144,41 @@ but weaker on surface-level NZ signal detection and 50% slower.
 The meth threshold gap (Q5) is a known limitation: it requires fetching the
 Regulations, not just the RTA. Potential fix: add the Regulations URL to
 the live anchor for meth-related queries (future work).
+
+---
+
+## Section 16 - DeepSeek-V4-Flash RAG + Live Anchor (2026-05-29)
+
+Tested Qwen3.5-9B-DeepSeek-V4-Flash-Q5_K_M with the same RAG + live
+legislation setup as Section 15.
+
+### Result: Unusable for this RAG architecture
+
+**Score: 0/6 (0%) - all answers empty or retrieval errors**
+
+Root cause: DeepSeek-V4-Flash is a heavy reasoning model. The llama.cpp
+server streams tokens in two separate fields:
+- `reasoning_content`: internal chain-of-thought (very long)
+- `content`: the actual answer (short, produced after reasoning)
+
+The generator reads only `content`. With max_tokens=1500 and a full RAG
+context (~11,000 chars: 5 chunks x 1500 + live anchor), the model generates
+~10,000+ chars of reasoning, exhausting the token budget before producing
+any `content`. Even at max_tokens=4096, most questions still returned empty
+answers because the reasoning phase alone exceeded 3,000 tokens.
+
+**Measured reasoning overhead:**
+- Simple 1-sentence context: 557 chars reasoning, 5 chars content
+- Full RAG context (legal question): 10,412 chars reasoning, 7 chars content
+
+The "Flash" name refers to the DeepSeek-V4 knowledge distillation, not
+inference speed. In practice it is the slowest model tested (50-70s/question
+vs 8-9s for Qwen3-8B).
+
+**Verdict:** Incompatible with streaming RAG. The reasoning model architecture
+requires either: (a) a much larger context window, (b) a separate mode that
+disables thinking entirely, or (c) a rewrite of the generator to skip
+`reasoning_content` tokens and stream only `content`. Not worth the effort
+given Qwen3-8B's superior score at 5-7x faster latency.
+
+Result file: `benchmarks/rag_quality_deepseek_v4_flash_9b.json`
