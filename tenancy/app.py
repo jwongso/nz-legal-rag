@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import re
+import time
 import unicodedata
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -52,6 +53,8 @@ _PUBLIC_TOKEN = os.getenv("TENANCY_API_TOKEN", "")
 _DEBUG_KEY = os.getenv("TENANCY_DEBUG_KEY", "")
 
 _RTA_URL = "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+_rta_page_cache: tuple[str, float] | None = None
+_RTA_CACHE_TTL = 3600  # seconds
 
 _ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
 _MAX_BODY_BYTES = 20_480  # 20 KB
@@ -124,6 +127,7 @@ async def lifespan(app: FastAPI):
     _leg_store = VectorStore(collection=config.QDRANT_COLLECTION)
     _browser = BrowserSession()
     await _browser.open()
+    asyncio.create_task(_fetch_rta_cached())  # warm cache before first request
     yield
     if _pipeline:
         await _pipeline.close()
@@ -206,6 +210,55 @@ async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
         return "", []
 
 
+async def _fetch_rta_cached() -> str | None:
+    """Return full RTA page text, fetching via headless browser and caching for 1 hour."""
+    global _rta_page_cache
+    if _rta_page_cache:
+        cached_text, ts = _rta_page_cache
+        if time.monotonic() - ts < _RTA_CACHE_TTL:
+            return cached_text
+    if _browser is None:
+        return None
+    try:
+        text = await asyncio.wait_for(
+            _browser.fetch_text(_RTA_URL, wait="networkidle"),
+            timeout=20,
+        )
+        _rta_page_cache = (text, time.monotonic())
+        return text
+    except Exception:
+        return None
+
+
+def _build_live_anchor(full_text: str, leg_sources: list[dict]) -> str:
+    """Build a legislation anchor from live RTA page text using section refs in leg_sources."""
+    section_refs: list[str] = []
+    seen: set[str] = set()
+    for s in leg_sources:
+        m = re.search(r'/s?(\d+[A-Z]?)$', s.get('case_id', ''), re.IGNORECASE)
+        if m:
+            key = m.group(1).upper()
+            if key not in seen:
+                seen.add(key)
+                section_refs.append(m.group(1))
+    if not section_refs:
+        return ""
+    lines = [
+        "Relevant sections of the Residential Tenancies Act 1986 "
+        "(current live text from legislation.govt.nz - use for grounding section numbers only, "
+        "do not cite with [SN] notation):"
+    ]
+    for ref in section_refs[:3]:
+        num = re.sub(r'^[sS]', '', ref)
+        matches = list(re.finditer(rf"\n{re.escape(num)}\b", full_text))
+        for m in matches[-2:]:
+            candidate = full_text[m.start(): m.start() + 2500]
+            if re.search(r"\(\d+\)", candidate):
+                lines.append(f"\ns{num} {candidate[:1800].strip()}")
+                break
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 def _extract_section_refs(text: str) -> list[str]:
     """Return unique s[0-9]+ refs from text, preserving first-seen order."""
     found = re.findall(r'\bs(\d+[A-Z]?)\b', text)
@@ -220,10 +273,7 @@ def _extract_section_refs(text: str) -> list[str]:
 
 
 async def _verify_sections(answer: str, leg_sources: list[dict]) -> list[dict]:
-    """Fetch live RTA text and return excerpts for each referenced section."""
-    if _browser is None:
-        return []
-    # Sections named in leg_sources are highest priority
+    """Return live RTA excerpts for sections referenced in the answer and leg_sources."""
     leg_refs: list[str] = []
     seen: set[str] = set()
     for s in leg_sources:
@@ -240,23 +290,19 @@ async def _verify_sections(answer: str, leg_sources: list[dict]) -> list[dict]:
     all_refs = leg_refs[:4]
     if not all_refs:
         return []
-    try:
-        full_text = await asyncio.wait_for(
-            _browser.fetch_text(_RTA_URL, wait="networkidle"),
-            timeout=20,
-        )
-    except Exception:
+    full_text = await _fetch_rta_cached()
+    if not full_text:
         return []
     results = []
     for ref in all_refs:
         num = re.sub(r'^[sS]', '', ref)
         matches = list(re.finditer(rf"\n{re.escape(num)}\b", full_text))
         for m in matches[-2:]:
-            candidate = full_text[m.start(): m.start() + 1200]
+            candidate = full_text[m.start(): m.start() + 2500]
             if re.search(r"\(\d+\)", candidate):
                 results.append({
                     "reference": f"s{num}",
-                    "excerpt": candidate[:800].strip(),
+                    "excerpt": candidate[:1800].strip(),
                     "url": _RTA_URL,
                 })
                 break
@@ -480,7 +526,6 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
     strategy = req.strategy if debug_mode and req.strategy in _VALID_STRATEGIES else "vector"
 
     async def _event_stream():
-        import time
         t0 = time.monotonic()
         try:
             # BM25 uses a different score scale - skip cosine min_score filter
@@ -490,7 +535,12 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
             else:
                 retrieve_kwargs["min_chunks"] = 1
             retrieval_question = await _rewrite_query(question)
-            context_texts, sources = await _pipeline.retrieve(retrieval_question, **retrieve_kwargs)
+
+            # Vector retrieve + RTA anchor lookup run in parallel
+            (context_texts, sources), (anchor_vstore, leg_sources) = await asyncio.gather(
+                _pipeline.retrieve(retrieval_question, **retrieve_kwargs),
+                _retrieve_rta_anchor(retrieval_question),
+            )
             t_retrieve = time.monotonic() - t0
 
             if not context_texts:
@@ -499,7 +549,15 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
             scores = [s["_score"] for s in sources]
             public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
-            anchor, leg_sources = await _retrieve_rta_anchor(retrieval_question)
+
+            # Use live RTA text if the cache is already warm (zero latency); else fall back
+            live_text = (
+                _rta_page_cache[0]
+                if _rta_page_cache and time.monotonic() - _rta_page_cache[1] < _RTA_CACHE_TTL
+                else None
+            )
+            anchor = _build_live_anchor(live_text, leg_sources) if live_text and leg_sources else anchor_vstore
+
             yield f"data: {json.dumps({'type': 'sources', 'sources': public_sources, 'legislation': leg_sources})}\n\n"
             yield f"data: {json.dumps({'type': 'confidence', **_confidence(scores, strategy)})}\n\n"
 
