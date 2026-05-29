@@ -16,7 +16,7 @@ benchmarks/reports/
 .ruff_cache/
 .pytest_cache/
 westlaw_index.txt
-RETRIEVAL_STRATEGIES.md
-backlog_plan.md
-silicon_gpu_nvidia.md
 data/
+*.md
+!README.md
+!BENCHMARK.md
