@@ -1,8 +1,8 @@
 'use strict';
 
 // ---- Debug mode (Ctrl+Shift+D to activate) ----
-let _debugKey = sessionStorage.getItem('_dbgKey') || '';
-let _debugMode = !!_debugKey;
+let _debugKey = '';
+let _debugMode = false;
 
 const compareGrid = document.getElementById('compare-grid');
 
@@ -24,7 +24,6 @@ async function _activateDebug() {
   if (_debugMode) {
     _debugMode = false;
     _debugKey = '';
-    sessionStorage.removeItem('_dbgKey');
     _setDebugUI(false);
     history.replaceState(null, '', location.pathname);
     alert('Debug mode off.');
@@ -39,7 +38,6 @@ async function _activateDebug() {
     if (r.ok) {
       _debugKey = key;
       _debugMode = true;
-      sessionStorage.setItem('_dbgKey', key);
       _setDebugUI(true);
     } else {
       alert('Invalid debug key.');
@@ -62,23 +60,6 @@ function _initDebugShortcut() {
     }
   });
 
-  if (_debugMode) {
-    fetch('/debug/ping', {
-      headers: { 'X-API-Key': _apiToken, 'X-Debug-Key': _debugKey },
-    }).then(r => {
-      if (r.ok) {
-        _setDebugUI(true);
-      } else {
-        _debugMode = false;
-        _debugKey = '';
-        sessionStorage.removeItem('_dbgKey');
-      }
-    }).catch(() => {
-      _debugMode = false;
-      _debugKey = '';
-      sessionStorage.removeItem('_dbgKey');
-    });
-  }
 }
 
 const _STRATEGY_LABELS = {
