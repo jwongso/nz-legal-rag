@@ -25,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import config
 from rag.generator import Generator
+from rag.live_verify.browser import BrowserSession
 from rag.pipeline import RAGPipeline
 from rag.retriever import VectorStore
 from tenancy.queue import acquire, get_client_ip, queue_status, release
@@ -46,8 +47,11 @@ communitylaw.org.nz or Tenancy Services on 0800 836 262."
 
 _pipeline: RAGPipeline | None = None
 _leg_store: VectorStore | None = None  # nz_legal collection for RTA anchor chunks
+_browser: BrowserSession | None = None
 _PUBLIC_TOKEN = os.getenv("TENANCY_API_TOKEN", "")
 _DEBUG_KEY = os.getenv("TENANCY_DEBUG_KEY", "")
+
+_RTA_URL = "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
 
 _ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
 _MAX_BODY_BYTES = 20_480  # 20 KB
@@ -113,14 +117,18 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _pipeline, _leg_store
+    global _pipeline, _leg_store, _browser
     _pipeline = RAGPipeline()
     _pipeline._generator = Generator(system_prompt=_TENANCY_SYSTEM_PROMPT)
     _pipeline._store = VectorStore(collection=config.QDRANT_TENANCY_COLLECTION)
     _leg_store = VectorStore(collection=config.QDRANT_COLLECTION)
+    _browser = BrowserSession()
+    await _browser.open()
     yield
     if _pipeline:
         await _pipeline.close()
+    if _browser:
+        await _browser.close()
 
 
 _REWRITE_SYSTEM = (
@@ -196,6 +204,63 @@ async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
         return "\n".join(lines), leg_sources
     except Exception:
         return "", []
+
+
+def _extract_section_refs(text: str) -> list[str]:
+    """Return unique s[0-9]+ refs from text, preserving first-seen order."""
+    found = re.findall(r'\bs(\d+[A-Z]?)\b', text)
+    seen: set[str] = set()
+    result = []
+    for ref in found:
+        key = ref.upper()
+        if key not in seen:
+            seen.add(key)
+            result.append(ref)
+    return result
+
+
+async def _verify_sections(answer: str, leg_sources: list[dict]) -> list[dict]:
+    """Fetch live RTA text and return excerpts for each referenced section."""
+    if _browser is None:
+        return []
+    # Sections named in leg_sources are highest priority
+    leg_refs: list[str] = []
+    seen: set[str] = set()
+    for s in leg_sources:
+        m = re.search(r'/s?(\d+[A-Z]?)$', s.get("case_id", ""), re.IGNORECASE)
+        if m:
+            key = m.group(1).upper()
+            if key not in seen:
+                seen.add(key)
+                leg_refs.append(m.group(1))
+    for ref in _extract_section_refs(answer):
+        if ref.upper() not in seen:
+            seen.add(ref.upper())
+            leg_refs.append(ref)
+    all_refs = leg_refs[:4]
+    if not all_refs:
+        return []
+    try:
+        full_text = await asyncio.wait_for(
+            _browser.fetch_text(_RTA_URL, wait="networkidle"),
+            timeout=20,
+        )
+    except Exception:
+        return []
+    results = []
+    for ref in all_refs:
+        num = re.sub(r'^[sS]', '', ref)
+        matches = list(re.finditer(rf"\n{re.escape(num)}\b", full_text))
+        for m in matches[-2:]:
+            candidate = full_text[m.start(): m.start() + 1200]
+            if re.search(r"\(\d+\)", candidate):
+                results.append({
+                    "reference": f"s{num}",
+                    "excerpt": candidate[:800].strip(),
+                    "url": _RTA_URL,
+                })
+                break
+    return results
 
 
 _STATIC = Path(__file__).parent / "static"
@@ -443,13 +508,19 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
             gen_question = question + _IRAC_SUFFIX if req.irac else question
             t_gen = time.monotonic()
+            full_answer: list[str] = []
             async for token in _pipeline._generator.generate_stream(gen_question, context_texts, sources, legislation_anchor=anchor or None):
+                full_answer.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
 
             if debug_mode:
                 yield f"data: {json.dumps({'type': 'debug_done', 'generate_ms': round((time.monotonic() - t_gen) * 1000), 'total_ms': round((time.monotonic() - t0) * 1000)})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+            verification = await _verify_sections("".join(full_answer), leg_sources)
+            if verification:
+                yield f"data: {json.dumps({'type': 'verification', 'sections': verification})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
         finally:

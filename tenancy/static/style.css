@@ -932,6 +932,65 @@ footer .footer-copyright { margin-top: 6px; opacity: 0.75; }
   .compare-grid { grid-template-columns: 1fr !important; }
 }
 
+/* ---- Live verification panel ---- */
+.verification-panel {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #edf7ed;
+  border: 1px solid #a8d8a8;
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+.verification-header {
+  font-weight: 700;
+  color: #2e6b30;
+  margin-bottom: 8px;
+}
+
+.verification-check {
+  font-weight: 900;
+  margin-right: 3px;
+}
+
+.verification-item {
+  margin-top: 6px;
+}
+
+.verification-ref {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primary);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.verification-ref a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.verification-ref a:hover { text-decoration: underline; }
+
+.verification-excerpt {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  background: #f5fdf5;
+  border: 1px solid #c0dfc0;
+  border-radius: 4px;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 480px) {
   .hero h1 { font-size: 1.45rem; }

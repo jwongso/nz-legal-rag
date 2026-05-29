@@ -141,7 +141,7 @@ const feedbackText = document.getElementById('feedback-text');
 const feedbackSubmit = document.getElementById('feedback-submit');
 const feedbackThanks = document.getElementById('feedback-thanks');
 
-const app_js_version = 23;
+const app_js_version = 25;
 const LOADING_MESSAGES = [
   'Searching through Tenancy Tribunal decisions...',
   'Analysing relevant cases...',
@@ -304,6 +304,24 @@ function renderConfidence(ev) {
   if (aiWarning) resultCard.insertBefore(badge, aiWarning);
 }
 
+function renderVerification(sections) {
+  const existing = document.getElementById('verification-panel');
+  if (existing) existing.remove();
+  if (!sections || !sections.length) return;
+  const panel = document.createElement('div');
+  panel.id = 'verification-panel';
+  panel.className = 'verification-panel';
+  let html = '<div class="verification-header"><span class="verification-check">&#10003;</span> Verified against current legislation (legislation.govt.nz)</div>';
+  sections.forEach(s => {
+    html += `<details class="verification-item">
+      <summary class="verification-ref"><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.reference)}</a> - click to expand</summary>
+      <pre class="verification-excerpt">${escapeHtml(s.excerpt)}</pre>
+    </details>`;
+  });
+  panel.innerHTML = html;
+  resultCard.appendChild(panel);
+}
+
 async function fetchLegislationCases(sectionNum, badgeEl) {
   const existing = badgeEl.closest('.source-card--leg').querySelector('.leg-cases-panel');
   if (existing) { existing.remove(); return; }
@@ -382,6 +400,8 @@ feedbackSubmit.addEventListener('click', async () => {
 
 // ---- State helpers ----
 function showLoading() {
+  const vp = document.getElementById('verification-panel');
+  if (vp) vp.remove();
   loadingCard.classList.add('visible');
   resultCard.classList.remove('visible');
   errorCard.classList.remove('visible');
@@ -429,6 +449,8 @@ function resetToForm() {
   askAnotherRow.classList.remove('visible');
   const cb = document.getElementById('confidence-badge');
   if (cb) cb.remove();
+  const vp = document.getElementById('verification-panel');
+  if (vp) vp.remove();
   questionEl.value = '';
   charCountEl.textContent = '0';
   questionEl.focus();
@@ -807,6 +829,8 @@ form.addEventListener('submit', async (e) => {
           answerBody.textContent = rawAnswer;
         } else if (event.type === 'done') {
           finaliseResult(rawAnswer, streamedSources, streamedLegislation);
+        } else if (event.type === 'verification') {
+          renderVerification(event.sections);
         } else if (event.type === 'error') {
           showError(event.message || 'An error occurred.');
           return;
