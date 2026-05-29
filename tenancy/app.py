@@ -81,10 +81,10 @@ def _sanitize_question(text: str) -> str:
 
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self'; "
+    "script-src 'self' https://static.cloudflareinsights.com; "
     "style-src 'self'; "
     "img-src 'self' data:; "
-    "connect-src 'self'; "
+    "connect-src 'self' https://cloudflareinsights.com; "
     "frame-ancestors 'none';"
 )
 

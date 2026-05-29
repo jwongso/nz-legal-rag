@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NZ Tenancy Help - Free Legal Research</title>
   <meta name="description" content="Free NZ tenancy law research tool. Search real Tenancy Tribunal decisions to understand your rights as a tenant.">
-  <link rel="stylesheet" href="/static/style.css?v=9">
+  <link rel="stylesheet" href="/static/style.css?v=10">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 </head>
 <body>
@@ -68,7 +68,7 @@
 
       <div id="queue-notice" class="queue-notice"></div>
 
-      <div id="debug-strategy" class="debug-strategy" style="display:none">
+      <div id="debug-strategy" class="debug-strategy hidden">
         <span class="debug-strategy-label">Strategies:</span>
         <label class="strategy-check-label"><input type="checkbox" class="strategy-check" value="vector" checked> Vector</label>
         <label class="strategy-check-label"><input type="checkbox" class="strategy-check" value="vector_no_legal"> No rerank</label>
@@ -134,7 +134,7 @@
     <button type="button" id="ask-another-btn" class="btn-secondary">Ask another question</button>
   </div>
 
-  <div id="compare-grid" class="compare-grid" style="display:none"></div>
+  <div id="compare-grid" class="compare-grid hidden"></div>
 
   <div id="error-card" class="error-card" aria-live="assertive">
     <p id="error-text"></p>
@@ -159,7 +159,7 @@
   </div>
 </footer>
 
-<div id="debug-badge" class="debug-badge" style="display:none">DEBUG MODE</div>
+<div id="debug-badge" class="debug-badge hidden">DEBUG MODE</div>
 
 <div id="disclaimer-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-box">

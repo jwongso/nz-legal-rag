@@ -1,3 +1,5 @@
+.hidden { display: none; }
+
 :root {
   --primary: #1a2e5a;
   --primary-dark: #111e3d;

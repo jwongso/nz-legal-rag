@@ -11,10 +11,10 @@ function _getSelectedStrategies() {
 }
 
 function _setDebugUI(on) {
-  document.getElementById('debug-badge').style.display = on ? 'block' : 'none';
-  document.getElementById('debug-strategy').style.display = on ? 'flex' : 'none';
+  document.getElementById('debug-badge').classList.toggle('hidden', !on);
+  document.getElementById('debug-strategy').style.display = on ? 'flex' : '';
   if (!on) {
-    compareGrid.style.display = 'none';
+    compareGrid.style.display = '';
     compareGrid.innerHTML = '';
     askAnotherRow.classList.remove('visible');
   }
