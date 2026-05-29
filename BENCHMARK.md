@@ -1056,3 +1056,91 @@ this hardware (8GB VRAM). Reverting to Qwen3-8B-Q5_K_M as primary model until a
 better NZ-aware fine-tune is available or hardware improves (Mac Mini M4 Pro arriving
 ~August 2026 will allow 70B class models).
 | CONTEXT_PACK_MODE | statute_first |
+
+---
+
+## Section 15 - RAG + Live Legislation Grounding (2026-05-29)
+
+Re-runs the 6-question benchmark after adding live legislation fetching
+(headless Firefox via Playwright). The full RTA 1986 page is fetched from
+legislation.govt.nz at startup, cached 1 hour in memory, and the relevant
+section text (up to 1800 chars per section) is injected into the prompt
+BEFORE generation. Both models now see current statutory text alongside the
+tribunal decisions, not just the stale vector-store chunks.
+
+### Corrected Ground Truth
+
+Q1 ground truth updated: the 2024 Residential Tenancies Amendment Act
+RESTORED no-cause 90-day periodic termination. A landlord giving 90 days
+notice without reason IS now valid (s51(1)). The previous ground truth
+("invalid, needs specific grounds") was correct for 2021-2024 only.
+
+| # | Topic | Corrected answer |
+|---|---|---|
+| Q1 | No-cause periodic termination | VALID - s51(1) restored by 2024 Act |
+| Q2 | Fixed term expiry | Continues as periodic under s60/s60A RTA |
+| Q3 | Retaliatory notice | s54A/s56A 90-day rebuttable presumption applies |
+| Q4 | Rent reduction resets clock | Does NOT reset - only last increase date counts |
+| Q5 | Meth threshold | 1.5 ug/100cm2; landlord must prove tenant caused it |
+| Q6 | Bond top-up demand | Illegal - landlord must apply to Tribunal under s18 |
+
+### Test Conditions
+
+- Endpoint: `/ask/stream` (live legislation anchor included)
+- Strategy: vector + live RTA anchor (1800 chars per section, Playwright Firefox)
+- Temperature: default (0.0 effective from llama-server)
+- Results: `benchmarks/rag_quality_qwen3_8b.json`, `benchmarks/rag_quality_negentropy_9b.json`
+
+### Results
+
+Signal check: answer must contain at least one key term per question.
+
+| # | Signal terms | Qwen3-8B | Negentropy-9B |
+|---|---|---|---|
+| Q1 | valid, 90-day, 2024, restored | PASS | PASS |
+| Q2 | periodic, continues, s60 | PASS | PASS |
+| Q3 | retaliatory, rebuttable, s54A | PASS | FAIL |
+| Q4 | does not reset, last increase | PASS | PASS |
+| Q5 | 1.5, caused, causation, prove | PASS* | PASS |
+| Q6 | s18, Tribunal, illegal | PASS | PASS |
+| **Score** | | **6/6 (100%)** | **5/6 (83%)** |
+| **Avg latency** | | **8.7s** | **12.9s** |
+
+*Q5 Qwen: PASS on "caused" but answer confuses 1.5 with "15 ug/100cm2" threshold.
+Both models miss the exact 1.5 ug figure - it is set by regulation, not in the RTA
+text the live anchor fetches.
+
+### Per-Question Analysis
+
+**Q3 (Negentropy FAIL):** Negentropy interpreted the question as "how can the
+tenant escape the tenancy due to mould" and answered using s56A (tenant 2-day
+termination for uninhabitable premises). It missed the s54A/s56A retaliatory
+notice rebuttable presumption entirely. Qwen passed because it mentioned
+"retaliatory" but also did not cite the rebuttable presumption directly.
+
+**Q5 (both weak):** The 1.5 ug/100cm2 meth threshold comes from the Residential
+Tenancies (Methamphetamine Contamination) Regulations 2020, not the RTA 1986.
+The live anchor fetches only the RTA, so neither model sees the threshold.
+Negentropy gave a better answer on causation logic; Qwen stated a wrong threshold.
+
+### vs Section 14 (raw knowledge, no RAG, no live anchor)
+
+| Condition | Qwen3-8B | Negentropy-9B |
+|---|---|---|
+| Sec 14: raw knowledge (no RAG) | not tested | 0/6 without NZ cue |
+| Sec 14: raw knowledge + NZ cue | not tested | 0P/2P/4F |
+| Sec 15: RAG + live anchor | 6/6 (100%) | 5/6 (83%) |
+
+The live legislation anchor is the decisive improvement. Retrieval alone
+previously gave 18% signal score for both models; with the live RTA text
+in context the models can cite correct sections and correct notice periods.
+
+### Conclusion
+
+Qwen3-8B-Q5_K_M remains the production choice: better signal accuracy (6/6
+vs 5/6), 33% faster (8.7s vs 12.9s), and no jurisdiction-drift risk.
+Negentropy-9B is competitive on legal reasoning (better Q5 causation logic)
+but weaker on surface-level NZ signal detection and 50% slower.
+The meth threshold gap (Q5) is a known limitation: it requires fetching the
+Regulations, not just the RTA. Potential fix: add the Regulations URL to
+the live anchor for meth-related queries (future work).

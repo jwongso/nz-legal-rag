@@ -1,199 +1,404 @@
 {
   "model": "Negentropy-claude-opus-4.7-9B-Q5_K_M",
   "date": "2026-05-29",
-  "strategy": "vector",
+  "strategy": "vector+live_anchor",
   "results": {
     "Q1_no_cause_termination": {
       "question": "My landlord gave me 90 days notice to vacate but didn't give any reason. The tenancy is periodic and started in 2022. Is this notice valid?",
-      "answer": "Yes, the notice can be valid. Under the Residential Tenancies Act 1986, a landlord can terminate a periodic tenancy by giving 90 days' notice without having to give a reason [S2]. This right was confirmed by a law change that took effect on 30 January 2025 [S4].\n\nFor your notice to be valid, two things need to be true:\n\n1. **The tenancy must be periodic** \u2013 You've confirmed this is the case [S2].\n\n2. **The notice must be given within the \"effective period\"** \u2013 This is the time when the landlord is legally allowed to give 90 days' notice without a reason. Since the law changed on 30 January 2025, your notice must have been given on or after that date [S4].\n\nThe landlord doesn't need to provide a reason for the termination [S2], so the fact they didn't give one is not a problem.\n\n**Important:** If your tenancy is actually a fixed-term agreement (not periodic), the 90-day notice wouldn't be valid [S1]. But you've confirmed yours is periodic.\n\n**How to check if your notice is valid:**\n- Look at the date on your notice\n- If it was given before 30 January 2025, it may not be valid\n- If it was given on or after that date, it's likely valid\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "answer": "Yes, your notice appears to be valid.\n\nUnder section 51(1) of the Residential Tenancies Act 1986, a landlord can terminate a periodic tenancy by giving at least 90 days' written notice without having to state any reason [S4]. The notice just needs to:\n\n- Be in writing\n- Identify the premises\n- Specify the date by which you must vacate\n- Be signed by the landlord or their agent [S4]\n\nThe fact that your tenancy started in 2022 doesn't affect this - the 90-day notice rule applies to periodic tenancies regardless of when they began [S4].\n\nThe recent Residential Tenancies Amendment Act 2024 (effective from 30 January 2025) confirmed that landlords can terminate periodic tenancies with 90 days' written notice without stating any reason, provided the notice complies with the statutory requirements under section 51(1) [S2].\n\nSo as long as your landlord gave you at least 90 days' written notice that clearly states when you need to vacate, the notice is valid even without a reason given.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
       "sources": [
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5423733.html",
-          "date": "21/01/2026"
+          "case_id": "NZTT-MOJ-4927675",
+          "court_name": "Tenancy Tribunal",
+          "date": "28/07/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/4927675.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5287862.html",
-          "date": "08/07/2025"
+          "case_id": "NZTT-MOJ-5299909",
+          "court_name": "Tenancy Tribunal",
+          "date": "29/07/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5299909.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5065549.html",
-          "date": "17/01/2025"
+          "case_id": "NZTT-MOJ-5329967",
+          "court_name": "Tenancy Tribunal",
+          "date": "27/01/2026",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5329967.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5257959.html",
-          "date": "04/08/2025"
+          "case_id": "NZTT-MOJ-5319161",
+          "court_name": "Tenancy Tribunal",
+          "date": "12/09/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5319161.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5230879.html",
-          "date": "04/08/2025"
+          "case_id": "NZTT-MOJ-4658709",
+          "court_name": "Tenancy Tribunal",
+          "date": "27/11/2023",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4658709.html"
         }
       ],
-      "elapsed_s": 10.1
+      "legislation": [
+        {
+          "case_id": "NZLEG/RTA/s60A",
+          "title": "s60A Fixed-term tenancy becomes periodic unless contrary notice given",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM3280851"
+        },
+        {
+          "case_id": "NZLEG/RTA/s51",
+          "title": "s51 Termination by notice",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95514"
+        }
+      ],
+      "verification": [
+        {
+          "reference": "s60A",
+          "excerpt": "60A\nFixed-term tenancy becomes periodic unless contrary notice given\n\n(1)\n\nOn the expiry of a fixed-term tenancy of more than 90 days, the tenancy continues as a periodic tenancy with the same terms as the terms contained in the expired tenancy so far as those terms are consistent with a periodic tenancy.\n\n(2)\n\nHowever, the tenancy does not continue as a periodic tenancy if,—\n\n(a)\n\nbefore the expiry, the parties renew or extend the existing tenancy agreement; or\n\n(b)\n\nbefore the expiry, the parties agree not to continue with the tenancy; or\n\n(c)\n\nwithin the effective period, either party gives to the other party written notice of their intention not to continue with the tenancy; or\n\n(d)\n\nbefore the expiry, a party gives notice as specified in any of section 50(1)﻿(a) to (ac) that terminates the tenancy on or before the expiry.\n\n(2A)\n\nThe effective period is the period that starts on the 90th day before the date on which the tenancy expires and ends on the 21st day before that date.\n\n(3)\n\n[Repealed]\n\n(4)\n\n[Repealed]\n\n(5)\n\n[Repealed]\n\n(6)\n\n[Repealed]\n\nSection 60A: inserted, on 1 October 2010, by section 42 of the Residential Tenancies Amendment Act 2010 (2010 No 95).\n\nSection 60A(2): replaced, on 11 February 2021, by section 41 of the Residential Tenancies Amendment Act 2020 (2020 No 59).\n\nSection 60A(2)﻿(c): replaced, on 30 January 2025, by section 31(1) of the Residential Tenancies Amendment Act 2024 (2024 No 52).\n\nSection 60A(2)﻿(d): replaced, on 30 January 2025, by section 31(2) of the Residential Tenancies Amendment Act 2024 (2024 No 52).\n\nSection 60A(2A): inserted, on 30 January 2025, by section 31(3) of the Residential Tenancies Amendment Act 2024 (2024 No 52).\n\nSection 60A(3): repealed, on 30 January 2025, by section 31(4) of the Residential Tenancies Amendment A",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        },
+        {
+          "reference": "s51",
+          "excerpt": "51\nTermination by notice\n\n(1)\n\nA landlord may terminate a periodic tenancy in any case by giving at least 90 days’ notice.\n\n(2)\n\nA landlord may terminate a periodic tenancy by giving at least 42 days’ notice if—\n\n(a)\n\nthe owner of the premises requires the premises, within 90 days after the termination date, as the principal place of residence for at least 90 days for the owner or a member of the owner’s family; or\n\n(b)\n\nthe owner is required, under an unconditional agreement for the sale of the premises, to give the purchaser vacant possession; or\n\n(c)\n\nthe landlord customarily uses the premises, or has acquired the premises, for occupation by employees of the landlord or by contractors under contracts for services with the landlord, and—\n\n(i)\n\nthat fact is clearly stated in the tenancy agreement; and\n\n(ii)\n\nthe premises are required for that use; or\n\n(d)\n\nthe landlord customarily uses the premises, or has acquired the premises, for occupation by employees of a school board or by contractors under contracts for services with a school board, and—\n\n(i)\n\nthat fact is clearly stated in the tenancy agreement; and\n\n(ii)\n\nthe premises are required for that use; and\n\n(iii)\n\nthe landlord is the Crown.\n\n(2A)\n\nA tenant may terminate a periodic tenancy in any case by giving at least 21 days’ notice.\n\n(2B)\n\n[Repealed]\n\n(3)\n\nEvery notice to terminate a tenancy shall—\n\n(a)\n\nbe in writing; and\n\n(b)\n\nidentify the premises to which it relates; and\n\n(c)\n\nspecify the date by which the tenant is to vacate the premises; and\n\n(ca)\n\nif the landlord gives less than 90 days’ notice, set out the reasons for the termination; and\n\n(d)\n\nbe signed by the party giving the notice, or by that party’s agent.\n\n(4)\n\nIn a notice to terminate a tenancy, no special form of words shall be required; and no su",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "chunks": 5,
+        "message": "Found 5 directly relevant decisions."
+      },
+      "elapsed_s": 10.54,
+      "error": ""
     },
     "Q2_fixed_term_expiry": {
       "question": "My fixed term tenancy ended 3 weeks ago. My landlord says I have no rights because the contract expired. Neither of us signed a new agreement. Do I have to leave?",
-      "answer": "Based on the Tenancy Tribunal decisions provided, here is what you need to know about your situation:\n\n**You likely still have rights under your fixed term tenancy.**\n\nA fixed term tenancy is a contract for a defined period, and it can only be changed by agreement between both parties or by a Tribunal order [S5]. Since neither of you signed a new agreement, your original tenancy terms still apply.\n\n**You are not required to leave immediately.**\n\nThe Tribunal has made it clear that a fixed term tenancy continues until it expires, even if the landlord wants it to end [S4]. In one case, a tenant remained liable for rent until the end of the fixed term even though the tenancy had technically \"ended\" [S5].\n\n**Your landlord cannot simply tell you to leave.**\n\nThe Tribunal has ruled that a landlord is not required to find a new tenant [S5], and a fixed term tenancy can only be changed by mutual agreement or Tribunal order [S5]. Without a new agreement signed by both parties, your original tenancy continues.\n\n**What you should do:**\n\n1. **Check your original tenancy agreement** to confirm the exact end date\n2. **Communicate in writing** with your landlord about your situation\n3. **Do not vacate** until you are certain the tenancy has legally ended\n4. **If your landlord pressures you to leave**, you can contact Tenancy Services on 0800 836 262 for free advice\n\nThe key point from these cases is that fixed term tenancies are legally binding contracts, and simply letting the term \"expire\" doesn't automatically release you from your obligations or give your landlord the right to demand immediate departure without proper process.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "answer": "Yes, you do have rights, and you are not required to leave immediately.\n\n**Your tenancy continues as a periodic tenancy.** Under section 60A of the Residential Tenancies Act 1986, when a fixed-term tenancy of more than 90 days ends, it automatically continues as a periodic tenancy with the same terms as before [S1]. This happens by operation of law — you don't need to sign a new agreement for this to apply.\n\n**You can't be forced out without proper process.** Section 60AA makes it unlawful for a landlord to give a notice to terminate or apply to the Tribunal for termination if they know they aren't entitled to do so under the Act [S2]. Since your tenancy has now become periodic, the landlord must follow the proper termination procedures in the Act.\n\n**The landlord can't just say \"the contract expired\" and expect you to leave.** Even if both parties haven't signed a new agreement, the law automatically converts your tenancy to periodic. The landlord would need to give proper notice under the Act to end it.\n\n**What you should do:**\n- Contact your landlord and remind them that your tenancy continues as a periodic tenancy under section 60A\n- Ask them to provide proper written notice if they want to terminate\n- If they try to force you out or cut your utilities, that could be unlawful\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
       "sources": [
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4904821.html",
-          "date": "11/10/2024"
+          "case_id": "NZTT-MOJ-5394582",
+          "court_name": "Tenancy Tribunal",
+          "date": "18/02/2026",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5394582.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4933242.html",
-          "date": "09/08/2024"
+          "case_id": "NZTT-MOJ-4955120",
+          "court_name": "Tenancy Tribunal",
+          "date": "25/10/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4955120.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4641451.html",
-          "date": "26/10/2023"
+          "case_id": "NZTT-MOJ-5163112",
+          "court_name": "Tenancy Tribunal",
+          "date": "23/05/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5163112.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4909844.html",
-          "date": "25/10/2024"
+          "case_id": "NZTT-MOJ-5195159",
+          "court_name": "Tenancy Tribunal",
+          "date": "02/05/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5195159.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4472350.html",
-          "date": "04/03/2024"
+          "case_id": "NZTT-MOJ-4878321",
+          "court_name": "Tenancy Tribunal",
+          "date": "26/06/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4878321.html"
         }
       ],
-      "elapsed_s": 11.6
+      "legislation": [
+        {
+          "case_id": "NZLEG/RTA/s60",
+          "title": "s60 Tenant remaining in possession after termination of tenancy",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95529"
+        },
+        {
+          "case_id": "NZLEG/RTA/s60A",
+          "title": "s60A Fixed-term tenancy becomes periodic unless contrary notice given",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM3280851"
+        }
+      ],
+      "verification": [
+        {
+          "reference": "s60",
+          "excerpt": "60\nTenant remaining in possession after termination of tenancy\n\n(1)\n\nWhere a tenant remains in occupation of the premises after the tenancy has terminated or has been terminated, all the obligations of the tenant shall continue in force as if the tenancy were still subsisting until such time as the tenant ceases to occupy the premises.\n\n(2)\n\nIf the landlord permits the tenant to remain in the premises for more than 90 days after the tenancy has terminated or has been terminated, without obtaining a possession order, or for more than 90 days after obtaining a possession order, the landlord shall be deemed to have granted, and the tenant shall be deemed to have accepted, as from the date on which that period of 90 days expired, a periodic tenancy of the premises on the same terms and conditions as pertained to the original tenancy immediately before its termination.\n\n(3)\n\nThe landlord shall not be taken to have permitted the tenant to remain in possession, or to have given up the right to proceed under this Act in respect of any breach of the tenant’s obligations, merely because the landlord accepts payment of rent in respect of any period after the tenancy has been terminated.\n\nCompare: Residential Tenancies Act 1978–1981 s 61(2) (SA)\n\n60AA\nLandlord acting to terminate tenancy without grounds\n\nA landlord commits an unlawful act if they give or purport to give a notice to terminate to the tenant or apply or purport to apply to the Tribunal for an order terminating the tenancy knowing that they are not entitled, under this Act, to give the notice or to make the application.\n\nSection 60AA: inserted, on 11 February 2021, by section 40 of the Residential Tenancies Amendment Act 2020 (2020 No 59).\n\n60A\nFixed-term tenancy becomes periodic unless contrary notice given\n\n(1)\n\nOn",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        },
+        {
+          "reference": "s60A",
+          "excerpt": "60A\nFixed-term tenancy becomes periodic unless contrary notice given\n\n(1)\n\nOn the expiry of a fixed-term tenancy of more than 90 days, the tenancy continues as a periodic tenancy with the same terms as the terms contained in the expired tenancy so far as those terms are consistent with a periodic tenancy.\n\n(2)\n\nHowever, the tenancy does not continue as a periodic tenancy if,—\n\n(a)\n\nbefore the expiry, the parties renew or extend the existing tenancy agreement; or\n\n(b)\n\nbefore the expiry, the parties agree not to continue with the tenancy; or\n\n(c)\n\nwithin the effective period, either party gives to the other party written notice of their intention not to continue with the tenancy; or\n\n(d)\n\nbefore the expiry, a party gives notice as specified in any of section 50(1)﻿(a) to (ac) that terminates the tenancy on or before the expiry.\n\n(2A)\n\nThe effective period is the period that starts on the 90th day before the date on which the tenancy expires and ends on the 21st day before that date.\n\n(3)\n\n[Repealed]\n\n(4)\n\n[Repealed]\n\n(5)\n\n[Repealed]\n\n(6)\n\n[Repealed]\n\nSection 60A: inserted, on 1 October 2010, by section 42 of the Residential Tenancies Amendment Act 2010 (2010 No 95).\n\nSection 60A(2): replaced, on 11 February 2021, by section 41 of the Residential Tenancies Amendment Act 2020 (2020 No 59).\n\nSection 60A(2)﻿(c): replaced, on 30 January 2025, by section 31(1) of the Residential Tenancies Amendment Act 2024 (2024 No 52).\n\nSection 60A(2)﻿(d): replaced, on 30 January 2025, by section 31(2) of the Residential Tenancies Amendment Act 2024 (2024 No 52).\n\nSection 60A(2A): inserted, on 30 January 2025, by section 31(3) of the Residential Tenancies Amendment Act 2024 (2024 No 52).\n\nSection 60A(3): repealed, on 30 January 2025, by section 31(4) of the Residential Tenancies Amendment A",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "chunks": 5,
+        "message": "Found 5 directly relevant decisions."
+      },
+      "elapsed_s": 12.41,
+      "error": ""
     },
     "Q3_retaliatory_notice": {
       "question": "I complained to Tenancy Services about mould on 1 March. My landlord gave me a termination notice on 15 April citing sale of property. Is there anything I can do?",
-      "answer": "Based on the Tenancy Tribunal decisions provided, here is what you can do:\n\n**1. Check if the notice is retaliatory**\n\nA termination notice given shortly after you complained about mould may be considered retaliatory. In [S1], the Tribunal found that a notice given because of a mould report was acting \"without the necessary authority\" and could be seen as retaliatory [S1]. The Tribunal specifically looked at whether the notice was given because of the tenant's complaint or actions, not just because of the mould itself [S1].\n\n**2. The \"sale of property\" reason is not valid**\n\nYour landlord cannot use \"sale of property\" as a valid reason to end your tenancy. The Residential Tenancies Act 1986 does not allow landlords to terminate tenancies for this reason. The Tribunal has rejected such notices when they are not based on proper grounds under the Act.\n\n**3. You may be entitled to compensation**\n\nIn [S2], the Tribunal ordered $500 compensation to tenants because the landlord failed to adequately respond to mould concerns. The Tribunal noted that tenants had complained about mould affecting their health and that of their children, and the landlord's failure to address this properly warranted compensation [S2].\n\n**4. Your complaint to Tenancy Services is important**\n\nYour complaint to Tenancy Services on 1 March is significant evidence. In [S2], an email from a tenant complaining about mould was used as evidence that the landlord had been informed of the issue [S2]. Your written complaint creates a clear record that you raised the issue before the notice was given.\n\n**What you should do now:**\n\n- Contact Tenancy Services immediately on 0800 836 262 to report the retaliatory notice\n- Gather all evidence: your complaint date, any correspondence with your landlord, photos of mould, medical records if mould affected your health\n- Do not leave the property until the notice is properly resolved\n- Consider applying to the Tenancy Tribunal for an urgent hearing\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "answer": "Based on the Tenancy Tribunal decisions provided, here's what you can do:\n\n**You may be able to terminate the tenancy yourself using a 2-day notice.**\n\nUnder section 56A of the Residential Tenancies Act 1986, if the premises are \"unlawful residential premises\" (which can include situations where mould makes the property uninhabitable), a tenant can terminate the tenancy by giving at least 2 days' notice to the landlord [S1].\n\n**What you can do right now:**\n\n1. **Send a 2-day termination notice** - You can give the landlord 2 days' notice to terminate the tenancy on the grounds that the premises are uninhabitable due to mould [S1].\n\n2. **Document everything** - Keep copies of your complaint to Tenancy Services dated 1 March, any correspondence about the mould, and the termination notice you receive from your landlord.\n\n3. **Consider applying to the Tribunal** - If you need more time or want to dispute the landlord's sale notice, you can apply to the Tenancy Tribunal for an order terminating the tenancy on the ground that the premises are uninhabitable [S1].\n\n**Important notes from the cases:**\n\n- In one case, a tenant successfully relied on a mould report and medical advice to give 2 days' notice to terminate because the flat was not safe for him to live in [S2].\n- Another case shows that when mould is discovered, the tenancy can end due to the effects of mould that tenants are suffering [S3].\n- However, tenants must take reasonable steps to reduce and control mould during the tenancy [S5].\n\n**For advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.**",
       "sources": [
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4904078.html",
-          "date": "27/09/2024"
+          "case_id": "NZTT-MOJ-4904078",
+          "court_name": "Tenancy Tribunal",
+          "date": "27/09/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4904078.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4614190.html",
-          "date": "03/10/2023"
+          "case_id": "NZTT-MOJ-4626690",
+          "court_name": "Tenancy Tribunal",
+          "date": "19/02/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4626690.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4626690.html",
-          "date": "19/02/2024"
+          "case_id": "NZTT-MOJ-4623429",
+          "court_name": "Tenancy Tribunal",
+          "date": "19/09/2023",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4623429.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4953614.html",
-          "date": "01/11/2024"
+          "case_id": "NZTT-MOJ-4953614",
+          "court_name": "Tenancy Tribunal",
+          "date": "01/11/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4953614.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4668069.html",
-          "date": "10/11/2023"
+          "case_id": "NZTT-MOJ-5116749",
+          "court_name": "Tenancy Tribunal",
+          "date": "05/03/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5116749.html"
         }
       ],
-      "elapsed_s": 13.2
+      "legislation": [
+        {
+          "case_id": "NZLEG/RTA/s56A",
+          "title": "s56A Termination where premises are unlawful residential premises",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#LMS245603"
+        },
+        {
+          "case_id": "NZLEG/RTA/s59B",
+          "title": "s59B Termination where regulations prescribe testing methods and maximum inhabitable level of contaminant",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#LMS447155"
+        }
+      ],
+      "verification": [
+        {
+          "reference": "s56A",
+          "excerpt": "56A\nTermination where premises are unlawful residential premises\n\n(1)\n\nA tenant of premises that at the start of the tenancy were, and that remain, unlawful residential premises may terminate the tenancy by giving not less than 2 days’ notice to the landlord.\n\n(2)\n\nWithout limiting subsection (1), a landlord or a tenant may apply to the Tribunal for an order terminating a tenancy on the ground that the premises are unlawful residential premises.\n\n(3)\n\nThe Tribunal may make the order if section 78A applies and the Tribunal is satisfied that it would be inequitable to refuse to make an order terminating the tenancy.\n\nSection 56A: inserted, on 27 August 2019, by section 12 of the Residential Tenancies Amendment Act 2019 (2019 No 37).\n\n56B\nWithdrawal from tenancy following family violence\n\n(1)\n\nA tenant under a fixed-term or periodic tenancy may withdraw from the tenancy by giving at least 2 days’ notice to the landlord if—\n\n(a)\n\nthe notice is accompanied by qualifying evidence that either or both of the following apply:\n\n(i)\n\nthe tenant has been a victim of family violence while a tenant of the premises:\n\n(ii)\n\nthe tenant’s dependant has been a victim of family violence while residing at the premises with the tenant; and\n\n(b)\n\nthe notice is in the approved form and includes the prescribed information.\n\n(2)\n\nIf there are no other tenants under the tenancy at the time of the withdrawal, the tenancy terminates.\n\n(3)\n\nIf there are other tenants (remaining tenants) under the tenancy at the time of the withdrawal,—\n\n(a)\n\nthe tenant withdrawing from the tenancy (the withdrawing tenant) ceases to be responsible to the landlord for obligations under the tenancy agreement and this Act, except in respect of any liability for anything done or omitted to be done before the withdrawal;",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        },
+        {
+          "reference": "s59B",
+          "excerpt": "59B\nTermination where regulations prescribe testing methods and maximum inhabitable level of contaminant\n\n(1)\n\nThis section applies if testing in accordance with a relevant prescribed method establishes contamination by a contaminant, in any part of the premises, at a level that is above a relevant maximum inhabitable level prescribed for that contaminant.\n\n(2)\n\nIf the contamination has occurred as a result of a breach of the tenancy agreement (whether for a fixed-term tenancy or a periodic tenancy),—\n\n(a)\n\nthe whole of the premises is treated as uninhabitable; and\n\n(b)\n\nif the tenant is not in breach, the rent abates; and\n\n(c)\n\nthe party who is not in breach may give notice to the other party terminating the tenancy.\n\n(3)\n\nIf the contamination has occurred otherwise than as a result of a breach of the tenancy agreement (whether for a fixed-term tenancy or a periodic tenancy), then, unless subsection (4) applies,—\n\n(a)\n\nthe whole of the premises is treated as uninhabitable; and\n\n(b)\n\nthe rent abates; and\n\n(c)\n\neither party may give notice to the other terminating the tenancy.\n\n(4)\n\nHowever, for the purposes of subsection (3), if the only part of the premises that is established to be contaminated above the maximum inhabitable level is a remote and inconsequential part of the premises (see subsection (8)),—\n\n(a)\n\nthe rent abates accordingly; and\n\n(b)\n\neither party may apply to the Tribunal for an order terminating the tenancy.\n\n(5)\n\nOn an application under subsection (4)﻿(b), the Tribunal may make an order terminating the tenancy if it is satisfied that it would be unreasonable to require the landlord to decontaminate the premises or (as the case may require) to require the tenant to continue with the tenancy albeit at a reduced rent.\n\n(6)\n\nWhere a landlord gives notice",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "chunks": 5,
+        "message": "Found 5 directly relevant decisions."
+      },
+      "elapsed_s": 13.62,
+      "error": ""
     },
     "Q4_rent_reduction_clock": {
       "question": "My landlord reduced my rent from $600 to $550 per week in January by agreement. In August (7 months later) they want to increase it back to $600. Under the 12-month rule, can they do this?",
-      "answer": "Based on the Tenancy Tribunal decisions provided, here is the answer to your question:\n\n**Yes, your landlord can increase the rent back to $600 per week.**\n\nUnder the Residential Tenancies Act 1986, a landlord has the right to increase the rent every 12 months after giving at least 60 days' written notice [S1]. Since your landlord reduced your rent in January and now wants to increase it in August (7 months later), they are well within the 12-month rule.\n\n**Important things to know:**\n\n1. **The 12-month rule applies to the original tenancy agreement** - A landlord cannot increase the rent more than once every 12 months and can only increase the rent in a fixed term tenancy if the tenancy agreement allows [S3].\n\n2. **Your agreement to reduce rent doesn't change this** - The Tribunal has found in other cases that agreements to reduce rent are limited to their specific timeframe. For example, in one case, the Tribunal found that a rent reduction only applied \"up until\" a certain date, and rent returned to the original amount after that date [S4]. Similarly, in another case, the Tribunal found that a landlord had offered reduced rent only \"over the marketing phase of the sale\" and \"six weeks free rent at the end of the tenancy\" [S5].\n\n3. **You should check your tenancy agreement** - Make sure you have at least 60 days' written notice before the increase takes effect [S1].\n\n**For advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.**",
+      "answer": "Based on the Residential Tenancies Act 1986 and the Tribunal decisions provided, here is the answer to your question:\n\n**Yes, your landlord can increase the rent back to $600 per week.**\n\nThe 12-month rule in section 24 of the Act prevents rent increases within 12 months of:\n- The tenancy starting, OR\n- The last rent increase taking effect [S1]\n\n**In your situation:**\n- Your last rent change was a **reduction** from $600 to $550 in January\n- A reduction is **not** an \"increase\" for the purposes of the 12-month rule\n- Therefore, the 12-month clock for the next increase starts from when the increase takes effect, not from the reduction\n\n**What your landlord must do:**\n- Give you a written notice specifying the new rent amount and the effective date [S1]\n- The increase must take effect at least **60 days** after the notice is given [S1]\n- The notice must be validly served under section 24 [S3]\n\n**Important note:**\nIf your landlord had instead increased the rent from $550 to $600 in January, then the 12-month rule would have prevented any further increase until January the following year. But since they reduced the rent, the rule doesn't apply in that way.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
       "sources": [
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4849526.html",
-          "date": "22/07/2024"
+          "case_id": "NZTT-MOJ-4847233",
+          "court_name": "Tenancy Tribunal",
+          "date": "10/05/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4847233.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5166471.html",
-          "date": "25/03/2025"
+          "case_id": "NZTT-MOJ-5156871",
+          "court_name": "Tenancy Tribunal",
+          "date": "16/06/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5156871.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5151871.html",
-          "date": "26/05/2025"
+          "case_id": "NZTT-MOJ-4631875",
+          "court_name": "Tenancy Tribunal",
+          "date": "25/09/2023",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4631875.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4996951.html",
-          "date": "14/10/2024"
+          "case_id": "NZTT-MOJ-5338404",
+          "court_name": "Tenancy Tribunal",
+          "date": "20/11/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5338404.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4873681.html",
-          "date": "15/07/2024"
+          "case_id": "NZTT-MOJ-4627308",
+          "court_name": "Tenancy Tribunal",
+          "date": "07/11/2023",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4627308.html"
         }
       ],
-      "elapsed_s": 10.6
+      "legislation": [
+        {
+          "case_id": "NZLEG/RTA/s24",
+          "title": "s24 Rent increases",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95057"
+        },
+        {
+          "case_id": "NZLEG/RTA/s58A",
+          "title": "s58A Termination of tenancies in respect of build-to-rent land",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#LMS832231"
+        }
+      ],
+      "verification": [
+        {
+          "reference": "s24",
+          "excerpt": "24\nRent increases\n\n(1)\n\nThe rent payable in respect of any tenancy may be increased by the landlord provided all of the following conditions are complied with:\n\n(a)\n\nthe landlord shall give the tenant notice in writing of the increase; and\n\n(b)\n\nthat notice shall specify the amount of the increased rent and the day upon which the increased rent shall become payable; and\n\n(c)\n\nthe day upon which the increased rent shall become payable shall be not less than 60 days (or, in the case of a boarding house tenancy, not less than 28 days) after the date on which that notice is given; and\n\n(d)\n\nthe rent must not be increased within 12 months after the date of the commencement of the tenancy; and\n\n(e)\n\nthe rent must not be increased within 12 months after the date on which the last increase took effect; and\n\n(f)\n[Repealed]\n\n(g)\n\na landlord under a fixed-term tenancy—\n\n(i)\n\nmay not increase the rent during the term of the tenancy unless permitted by the provisions of the tenancy agreement to do so; and\n\n(ii)\n\nmay do so only in accordance with this section and any such provisions of the tenancy agreement; and\n\n(h)\n\nwhere the Tribunal has made an order under section 25 and that order is still in force, the rent shall not be increased to an amount in excess of the amount specified in the order.\n\n(1A)\n\nThe provisions referred to in subsection (1)﻿(g) may take the form of the provisions set out in Schedule 1.\n\n(2)\n\n[Repealed]\n\n(3)\n\nA notice of an increase in rent lawfully given under this section shall, unless it is withdrawn by the landlord, have the effect of varying the tenancy agreement in accordance with the terms of the notice.\n\n(4)\n\nWhere a landlord has given a notice to increase the rent and subsequently realises that, because of—\n\n(a)\n\nsome error in calculating the day on wh",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        },
+        {
+          "reference": "s58A",
+          "excerpt": "58A\nTermination of tenancies in respect of build-to-rent land\n\n(1)\n\nThis section applies if a tenant has accepted an offer—\n\n(a)\n\nfor a fixed-term tenancy of at least 10 years in respect of build-to-rent land; or\n\n(b)\n\nfor an extension or renewal of such a tenancy, provided that the extension or renewal is for at least 10 years.\n\n(2)\n\nThe tenant may terminate the tenancy by giving at least 56 days’ notice to the landlord.\n\n(3)\n\nIn this section, build-to-rent land means—\n\n(a)\n\nland as described in paragraph (a) of the definition of build-to-rent land in section YA 1 of the Income Tax Act 2007; and\n\n(b)\n\nincludes land that, at any time after it first meets the description referred to in paragraph (a), fails to meet that description.\n\nSection 58A: inserted (with effect on 1 October 2021), on 31 March 2023, by section 227 of the Taxation (Annual Rates for 2022–23, Platform Economy, and Remedial Matters) Act 2023 (2023 No 5).\n\n59\nDestruction of premises\n\n(1)\n\nWhere, otherwise than as a result of a breach of the tenancy agreement (whether for a fixed-term tenancy or a periodic tenancy), the premises are destroyed, or are so seriously damaged as to be uninhabitable,—\n\n(a)\n\nthe rent shall abate accordingly; and\n\n(b)\n\neither party may give notice to the other terminating the tenancy.\n\n(2)\n\nWhere a landlord gives notice of termination under subsection (1), the period of notice shall be not less than 7 days.\n\n(3)\n\nWhere a tenant gives notice of termination under subsection (1), the period of notice shall be not less than 2 days.\n\n(4)\n\nWhere, otherwise than as a result of a breach of the tenancy agreement, the premises are partially destroyed, or part of the premises is so seriously damaged as to be uninhabitable,—\n\n(a)\n\nthe rent shall abate accordingly; and\n\n(b)\n\neither party may",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "chunks": 5,
+        "message": "Found 5 directly relevant decisions."
+      },
+      "elapsed_s": 13.02,
+      "error": ""
     },
     "Q5_meth_threshold": {
       "question": "The landlord tested the property after I moved out and found methamphetamine contamination of 2.0 micrograms per 100cm2. They are claiming the full bond plus additional damages for remediation. Are they entitled to this?",
-      "answer": "Based on the Tenancy Tribunal decisions provided, here's what tenants need to know about methamphetamine contamination claims:\n\n**The Tribunal supports landlords' right to test and claim costs**\n\nThe Tribunal confirmed that landlords are justified in having premises tested for methamphetamine contamination after a tenancy ends [S5]. They can recover these costs as a \"reasonable and foreseeable loss\" caused by the tenant's breach of their obligations [S5].\n\n**What the Tribunal has awarded in similar cases**\n\nIn the cases provided, the Tribunal awarded:\n- The full insurance excess of $2,500 for remediation [S3]\n- $600 in exemplary damages [S4]\n- Reimbursement of the bond for testing and decontamination [S1]\n- Reimbursement of filing fees [S1]\n\n**Important factors the Tribunal considers**\n\nThe Tribunal looks at the actual contamination levels found. In one case, levels ranging from 14.5 \u03bcg to 15.8 \u03bcg per 100cm\u00b2 were found, with the higher level considered \"relatively high\" [S4]. The Tribunal also considers:\n- The impact on the landlord (vacant premises for months, stress, inconvenience) [S4]\n- Whether remediation work is \"lengthy and considerable\" [S4]\n- Whether the contamination affected the landlord's ability to re-let the property [S4]\n\n**What this means for your situation**\n\nThe Tribunal has shown it will support legitimate claims for methamphetamine remediation costs, including the full bond if needed. However, the specific award depends on the actual contamination levels, the extent of remediation required, and the impact on the landlord.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "answer": "Based on the Tribunal decisions provided, here's what the Residential Tenancies Act 1986 says about methamphetamine contamination:\n\n**The landlord may be entitled to claim damages, but they must prove several things first:**\n\n1. **The contamination must have occurred during the tenancy** - The landlord has the burden of proving this [S3], [S4], [S5].\n\n2. **The tenant must have caused or permitted it** - Once the landlord proves the contamination occurred during the tenancy, the tenant can avoid liability by proving they did not carelessly or intentionally cause or permit the damage [S3], [S4], [S5].\n\n3. **Tenants are responsible for people at the premises with their permission** - This includes guests, partners, or anyone else the tenant allowed to be there [S3], [S4], [S5].\n\n**What the Tribunal has ordered in similar cases:**\n\n- In one case, the Tribunal ordered a tenant to pay $8,291.36 for methamphetamine contamination [S2].\n- The Tribunal requires proof through laboratory reports and invoices [S2].\n- The Tribunal will only order payment if satisfied, on the balance of probabilities, that the contamination occurred during the tenancy and resulted from an imprisonable offence [S2].\n\n**Regarding the bond:**\n\nThe decisions don't specifically address whether methamphetamine contamination damages can be claimed from the bond. The bond is generally held for damage to the premises, but the specific rules about methamphetamine contamination are governed by section 49B of the Residential Tenancies Act 1986 [S2].\n\n**What you should do:**\n\n- Ask the landlord for the laboratory reports and invoices supporting their claim [S2]\n- Consider whether you can prove you didn't cause or permit the contamination [S3], [S4], [S5]\n- Be aware that the Tribunal will only order payment if satisfied the contamination resulted from an imprisonable offence [S2]\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
       "sources": [
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4914336.html",
-          "date": "08/10/2024"
+          "case_id": "NZTT-MOJ-4734369",
+          "court_name": "Tenancy Tribunal",
+          "date": "15/11/2023",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4734369.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/5014208.html",
-          "date": "28/11/2024"
+          "case_id": "NZTT-MOJ-5384462",
+          "court_name": "Tenancy Tribunal",
+          "date": "15/01/2026",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5384462.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4731031.html",
-          "date": "16/04/2024"
+          "case_id": "NZTT-MOJ-5317699",
+          "court_name": "Tenancy Tribunal",
+          "date": "06/03/2026",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5317699.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4756350.html",
-          "date": "22/04/2024"
+          "case_id": "NZTT-MOJ-5346321",
+          "court_name": "Tenancy Tribunal",
+          "date": "06/03/2026",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5346321.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4510709.html",
-          "date": "02/08/2024"
+          "case_id": "NZTT-MOJ-5195678",
+          "court_name": "Tenancy Tribunal",
+          "date": "02/10/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5195678.html"
         }
       ],
-      "elapsed_s": 11.5
+      "legislation": [
+        {
+          "case_id": "NZLEG/RTA/s2",
+          "title": "s2 Interpretation",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM94283"
+        },
+        {
+          "case_id": "NZLEG/RTA/s18AA",
+          "title": "s18AA Pet bonds",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#LMS1561960"
+        }
+      ],
+      "verification": [
+        {
+          "reference": "s2",
+          "excerpt": "2\nCommencement\n\nThis Act comes into force on a date to be appointed by the Governor-General by Order in Council; and 1 or more orders may be made bringing different provisions into force on different dates.\n\nSection 2: this Act brought into force, on 1 October 2010, by clause 2 of the Residential Tenancies Amendment Act 2010 Commencement Order 2010 (SR 2010/258).\n\n3\nPrincipal Act amended\n\nThis Act amends the Residential Tenancies Act 1986.\n\nPart 2\nTransitional provisions\n89\nExisting tenancies\n\n(1)\n\nIn this Part,—\n\nboarding house tenancy has the same meaning as in section 66B of the principal Act\n\nexisting tenancy, in relation to a provision of the principal Act amended, substituted, or inserted by this Act, means a tenancy (including a boarding house tenancy) that—\n\n(a)\n\nwas granted before the commencement of the provision of this Act that made the amendment, substitution, or insertion; and\n\n(b)\n\nsubsisted immediately before that commencement.\n\n(2)\n\nA provision of the principal Act as amended, substituted, or inserted by this Act, so far as it is applicable to any tenancy, applies to the tenancy even if the tenancy is an existing tenancy.\n\n90\nExisting tenancies not affected by certain amendments\n\n(1)\n\nA provision of the principal Act that is listed in subsection (2), so far as it is applicable to an existing tenancy, applies to the tenancy in the way the provision read immediately before the amendment or substitution of the provision by this Act came into force.\n\n(2)\n\nThe provisions are as follows:\n\n(a)\n\nthe definition of service tenancy in section 2(1) of the principal Act:\n\n(b)\n\nsection 7 of the principal Act (which relates to short fixed-term tenancies):\n\n(c)\n\nsection 25 of the principal Act (which relates to market rent):\n\n(d)\n\nsection 39 of the principal Act (whic",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "chunks": 5,
+        "message": "Found 5 directly relevant decisions."
+      },
+      "elapsed_s": 15.56,
+      "error": ""
     },
     "Q6_bond_topup": {
       "question": "My rent increased from $500 to $600 per week last month. My landlord is now demanding I pay an extra $400 bond to bring it up to 4 weeks of the new rent. Is this legal?",
-      "answer": "Yes, your landlord is acting legally in this situation.\n\nUnder the Residential Tenancies Act 1986, when rent is lawfully increased, the landlord may require you to pay an additional bond amount that does not exceed the increase in rent for four weeks [S2].\n\nIn your case:\n- Your rent increased by $100 per week ($600 \u2212 $500)\n- Four weeks of that increase = $100 \u00d7 4 = $400\n\nSo the $400 your landlord is asking for is exactly the maximum amount they are allowed to request under the law [S2].\n\nA few things to keep in mind:\n- The landlord must give you at least 60 days' notice before the rent increase takes effect [S1]\n- The bond increase must be paid within 14 days of the rent increase taking effect (though this specific timeframe isn't mentioned in the sources provided)\n- The bond can never be more than four weeks' rent at the current rent level\n\nIf you have any concerns about the notice period or how the increase was communicated, you can contact Tenancy Services on 0800 836 262 for free advice.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "answer": "Yes, your landlord is acting within their rights under the Residential Tenancies Act 1986.\n\n**What the law says:**\n\nSection 18(2) of the Act allows a landlord to require a bond top-up when the rent increases. The landlord can ask for a further bond payment not exceeding the amount by which the rent payable for 4 weeks has been increased [S1].\n\n**In your situation:**\n\n- Your rent increased by $100 per week ($600 - $500 = $100)\n- Four weeks of that increase = $100 × 4 = $400\n- Your landlord is asking for exactly $400, which matches the maximum amount they are legally permitted to request [S1]\n\n**What you need to know:**\n\n- The landlord must give you at least 60 days' notice before the rent increase takes effect [S5]\n- The bond top-up must be paid within 21 days of the rent increase taking effect [S1]\n- The landlord must give you a receipt for any bond payment [S1]\n\n**If you have concerns:**\n\n- Make sure the rent increase notice was given at least 60 days in advance\n- Get a proper receipt for your $400 bond payment\n- Keep records of all correspondence with your landlord\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
       "sources": [
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4500760.html",
-          "date": "01/06/2023"
+          "case_id": "NZTT-MOJ-4769538",
+          "court_name": "Tenancy Tribunal",
+          "date": "19/02/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4769538.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4769538.html",
-          "date": "19/02/2024"
+          "case_id": "NZTT-MOJ-4377105",
+          "court_name": "Tenancy Tribunal",
+          "date": "12/09/2023",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4377105.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5336484.html",
-          "date": "27/03/2026"
+          "case_id": "NZTT-MOJ-4500760",
+          "court_name": "Tenancy Tribunal",
+          "date": "01/06/2023",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4500760.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4581611.html",
-          "date": "28/07/2023"
+          "case_id": "NZTT-MOJ-5338404",
+          "court_name": "Tenancy Tribunal",
+          "date": "20/11/2025",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5338404.html"
         },
         {
-          "citation": null,
-          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5146008.html",
-          "date": "22/04/2025"
+          "case_id": "NZTT-MOJ-4847233",
+          "court_name": "Tenancy Tribunal",
+          "date": "10/05/2024",
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4847233.html"
         }
       ],
-      "elapsed_s": 8.9
+      "legislation": [
+        {
+          "case_id": "NZLEG/RTA/s66D",
+          "title": "s66D Bond of 1 week’s rent or less",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM3283904"
+        },
+        {
+          "case_id": "NZLEG/RTA/s18",
+          "title": "s18 General bonds",
+          "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95041"
+        }
+      ],
+      "verification": [
+        {
+          "reference": "s66D",
+          "excerpt": "66D\nBond of 1 week’s rent or less\n\n(1)\n\nIf 1 week’s rent or less is received as bond under a boarding house tenancy,—\n\n(a)\n\nthe bond need not be lodged with the chief executive, and sections 19 to 22D do not apply; and\n\n(b)\n\nthe landlord must immediately give the tenant a receipt for the bond, and the receipt must comply with section 19(1)﻿(a); and\n\n(c)\n\nthe landlord must refund the bond to the tenant when the tenancy terminates.\n\n(2)\n\nDespite subsection (1)﻿(c), the landlord may retain out of a bond—\n\n(a)\n\nany unpaid rent owing under the tenancy; and\n\n(b)\n\nany other amount owing by the tenant to the landlord, such as (without limitation) costs associated with repairing damage attributable to the tenant, replacing lost keys, reimbursement for services provided by the landlord, or unpaid gas, electricity, water, or telephone charges.\n\n(3)\n\nIf the landlord does not refund the bond, or withholds more of the bond than the tenant considers is justified, the tenant may apply to the Tribunal for an order.\n\nSection 66D: inserted, on 1 October 2010, by section 49 of the Residential Tenancies Amendment Act 2010 (2010 No 95).\n\n66E\nOutgoings\n\n(1)\n\nThe landlord is responsible for all outgoings in respect of the boarding house that are incurred—\n\n(a)\n\nwhether or not the boarding house is occupied; or\n\n(b)\n\nfor common facilities; or\n\n(c)\n\nin respect of rooms that are occupied by more than 1 tenant.\n\n(2)\n\nWithout limiting the generality of subsection (1), the landlord is responsible for the cost of—\n\n(a)\n\nthe general rate (within the meaning of section 13 of the Local Government (Rating) Act 2002) payable in respect of the boarding house; and\n\n(b)\n\ninsurance premiums payable in respect of the boarding house.\n\n(3)\n\nA tenant is responsible for all outgoings that are exclusively attribut",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        },
+        {
+          "reference": "s18",
+          "excerpt": "18(4)﻿(a)\t\tLandlord requiring general bond greater than amount permitted\t\t1,500\n18AA(5)\t\tLandlord requiring pet bond greater than amount permitted or from tenant who is not keeping, or does not intend to keep, a pet\t\t1,500\n18A(2)﻿(a)\t\tLandlord requiring unauthorised form of security\t\t1,500\n19(2)\t\tBreaching duties on receipt of bond\t\t1,500\n22F(3)﻿(a)\t\tLandlord failing to state amount of rent when offering tenancy\t\t1,500\n22G(3)\t\tLandlord inviting or encouraging bids for rent\t\t1,500\n23(4)﻿(a)\t\tLandlord requiring rent more than 2 weeks in advance or before rent already paid expires\t\t1,500\n27(2)\t\tLandlord requiring rent in excess of market rent order\t\t350\n29(5)\t\tFailing to give receipt for rent\t\t350\n30(2)﻿(a)\t\tLandlord failing to keep records\t\t350\n33(2)\t\tLandlord seizing or disposing of tenant’s goods\t\t3,000\n38(3)\t\tInterference with privacy of tenant\t\t3,000\n40(3A)﻿(a)\t\tTenant failing, without reasonable excuse, to quit premises upon termination\t\t1,500\n40(3A)﻿(b)\t\tTenant’s interference, etc, with means of escape from fire\t\t4,000\n40(3A)﻿(c)\t\tTenant using or permitting premises to be used for unlawful purpose\t\t1,800\n40(3A)﻿(d)\t\tTenant’s harassment of other tenant or neighbour\t\t3,000\n40(3A)﻿(e)\t\tTenant failing to ensure number of residents does not exceed maximum allowed\t\t1,000\n42A(7)\t\tLandlord failing to respond to written request seeking consent for fixtures, etc\t\t1,500\n42B(3)\t\tLandlord failing to consent to request for minor change\t\t1,500\n42B(6)\t\tTenant failing to reinstate premises at end of tenancy following minor change\t\t1,500\n42C(2)\t\tTenant keeping pet without provision in tenancy agreement or landlord’s consent to keep pet\t\t750\n42D(3)\t\tLandlord including prohibition on tenant keeping pet in tenancy agreement without providing reasonable grounds in agreement for prohibit",
+          "url": "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
+        }
+      ],
+      "confidence": {
+        "level": "high",
+        "chunks": 5,
+        "message": "Found 5 directly relevant decisions."
+      },
+      "elapsed_s": 12.53,
+      "error": ""
     }
   }
 }
