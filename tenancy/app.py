@@ -123,6 +123,42 @@ async def lifespan(app: FastAPI):
         await _pipeline.close()
 
 
+_REWRITE_SYSTEM = (
+    "Rewrite the following as a concise formal legal question using standard "
+    "NZ residential tenancy law terminology. Output only the rewritten question, "
+    "no explanation, no preamble."
+)
+
+
+async def _rewrite_query(question: str) -> str:
+    """Rephrase informal/colloquial questions into formal tenancy law language.
+
+    Bridges the gap between casual user language (abbreviations, run-on sentences,
+    informal phrasing) and formal Tribunal decision language used in the vector index.
+    Falls back to the original question on any error.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                f"{config.LLM_BASE_URL}/chat/completions",
+                json={
+                    "model": config.LLM_MODEL,
+                    "messages": [
+                        {"role": "system", "content": _REWRITE_SYSTEM},
+                        {"role": "user", "content": question},
+                    ],
+                    "max_tokens": 100,
+                    "temperature": 0.0,
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
+            )
+            r.raise_for_status()
+            rewritten = r.json()["choices"][0]["message"]["content"].strip()
+            return rewritten if rewritten else question
+    except Exception:
+        return question
+
+
 async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
     """Return (anchor_text, leg_sources) for the top 2 RTA sections most relevant to the question.
 
@@ -388,7 +424,8 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
                 retrieve_kwargs.update({"min_score": 0.75, "min_chunks": 2})
             else:
                 retrieve_kwargs["min_chunks"] = 1
-            context_texts, sources = await _pipeline.retrieve(question, **retrieve_kwargs)
+            retrieval_question = await _rewrite_query(question)
+            context_texts, sources = await _pipeline.retrieve(retrieval_question, **retrieve_kwargs)
             t_retrieve = time.monotonic() - t0
 
             if not context_texts:
