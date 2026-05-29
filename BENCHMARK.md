@@ -974,4 +974,85 @@ Target production stack once full-corpus ingest is complete:
 | LLM_MODEL | Qwen3-8B-Q5_K_M |
 | PIPELINE | planner_filter_vector_legal |
 | RERANK_MODE | off |
+
+---
+
+## Section 14 - LLM Model Shootout (Raw Knowledge, 2026-05-29)
+
+Tested raw NZ tenancy law knowledge WITHOUT RAG pipeline. Purpose: establish which
+base model has best intrinsic NZ legal knowledge before context grounding.
+
+### Test Conditions
+
+- No RAG context provided - raw model completion only
+- Temperature: 0.1, max_tokens: 300
+- Hardware: RTX 4060 Laptop 8GB, llama.cpp Vulkan
+- All questions asked twice: once without jurisdiction cue, once with explicit "NZ law"
+
+### Benchmark Questions (ground truth)
+
+| # | Topic | Key trap | Correct answer |
+|---|---|---|---|
+| Q1 | No-cause periodic termination | Abolished Feb 2021 (RTAA 2020) | Invalid - s51 RTA, landlord needs specific grounds |
+| Q2 | Fixed term expiry | Auto-converts to periodic, does not end | No - continues as periodic under s60 RTA |
+| Q3 | Retaliatory notice | s54A 90-day rebuttable presumption | Yes - presumed retaliatory, burden on landlord |
+| Q4 | Rent reduction resets 12-month clock | It does NOT reset the clock | Depends on last INCREASE date, not last change |
+| Q5 | Methamphetamine threshold | NZ raised to 1.5 ug/100cm2 in 2018, causation required | 1.5 ug threshold; landlord must prove tenant caused it |
+| Q6 | Bond top-up demand | Landlord must get Tribunal ORDER, cannot demand directly | Illegal to demand - must apply to Tribunal under s18 |
+
+### Results - Negentropy-claude-opus-4.7-9B-Q5_K_M
+
+**Without NZ jurisdiction cue in question:**
+
+| Q | Result | Notes |
+|---|---|---|
+| Q1 | FAIL | Answered as England/Wales generic |
+| Q2 | FAIL | Answered "In England and Wales..." |
+| Q3 | PARTIAL | Mentioned sale not valid ground, missed s54A entirely |
+| Q4 | FAIL | Generic "variable rent" answer, no NZ law |
+| Q5 | FAIL | Cited 1.0 ug threshold (wrong), wrong legislation |
+| Q6 | FAIL | Generic international answer |
+
+**With explicit "NZ law" in question:**
+
+| Q | Result | Notes |
+|---|---|---|
+| Q1 | PARTIAL | Correctly says invalid, but cites wrong section (s41), misses post-2021 no-cause abolition |
+| Q2 | PASS | Correctly explains periodic conversion |
+| Q3 | PARTIAL | Notes sale ground conditions, misses s54A rebuttable presumption |
+| Q4 | PARTIAL | Correctly says reduction does not reset clock, but cites wrong section (s12(2)) |
+| Q5 | FAIL | Cites 1.0 ug (wrong - correct is 1.5 ug), cites wrong legislation entirely |
+| Q6 | PARTIAL | Correct direction (illegal) but wrong reasoning - misses Tribunal order requirement |
+
+**Score without cue: 0/6. With cue: 0P/2P/4F (0 pass, 4 partial, 2 fail)**
+
+### Key Findings
+
+1. Negentropy defaults to UK/US law without explicit NZ jurisdiction signal. This
+   is a significant risk for a public tool where users will not always specify NZ.
+2. Methamphetamine threshold (Q5) is consistently wrong regardless of cue. The
+   1.5 ug/100cm2 NZ standard introduced in 2018 is not in the model's training data.
+3. Section citations are frequently hallucinated (s41, s12(2) do not exist for
+   the cited purposes).
+4. The RAG pipeline compensates for all of the above by grounding answers in
+   actual NZ Tribunal decisions - raw model knowledge is a fallback only.
+5. For production use, the query rewriting step must always include NZ jurisdiction
+   context to prevent jurisdiction drift on informal questions.
+
+### Model Speed (RTX 4060 8GB, full GPU offload)
+
+| Model | Size | GPU layers | Tok/s |
+|---|---|---|---|
+| Qwen3-8B-Q5_K_M (bartowski) | 5.4 GB | 999 (all) | ~45 |
+| Qwopus-27B-MTP-Q4_K_M (Jackrong) | 16.8 GB | 20/46 | ~10 (CPU bottleneck) |
+| Qwen3.5-9B-DeepSeek-V4-Flash-Q5_K_M (Jackrong) | 6.5 GB | 999 (all) | 37.6 |
+| Negentropy-claude-opus-4.7-9B-Q5_K_M (Jackrong) | 6.5 GB | 999 (all) | 37.7 |
+
+### Conclusion
+
+Negentropy and DeepSeek-V4-Flash are similar speed to Qwen3-8B but show weaker
+NZ-specific legal knowledge. The 27B MoE model is too slow for production use on
+this hardware (8GB VRAM). Reverting to Qwen3-8B-Q5_K_M as primary model until a
+better NZ-aware fine-tune is available or hardware improves (Mac Mini M4 Pro arriving
+~August 2026 will allow 70B class models).
 | CONTEXT_PACK_MODE | statute_first |
