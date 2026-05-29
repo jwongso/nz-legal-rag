@@ -434,7 +434,7 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
             scores = [s["_score"] for s in sources]
             public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
-            anchor, leg_sources = await _retrieve_rta_anchor(question)
+            anchor, leg_sources = await _retrieve_rta_anchor(retrieval_question)
             yield f"data: {json.dumps({'type': 'sources', 'sources': public_sources, 'legislation': leg_sources})}\n\n"
             yield f"data: {json.dumps({'type': 'confidence', **_confidence(scores, strategy)})}\n\n"
 
