@@ -6,6 +6,7 @@ a tenancy-focused system prompt, and a fair queue.
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -15,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import redis.asyncio as aioredis
 from cachetools import TTLCache
 
 from fastapi import FastAPI, HTTPException, Request
@@ -42,6 +44,7 @@ Rules:
 - Be empathetic - users may be stressed about their housing situation.
 - If the context does not contain enough information to answer confidently, say so clearly.
 - Focus only on NZ residential tenancy matters: bonds, damage, rent arrears, notice periods, repairs, entry rights.
+- If the user describes something they have already done (past tense: "I planted", "I built", "I installed", "I painted"), answer in two parts: (1) the likely legal position based only on the retrieved sources, and (2) concrete practical next steps to reduce risk now that it is done. Do not only say what should have been done beforehand.
 - End every answer with: "For advice on your specific situation, contact Community Law (free) at \
 communitylaw.org.nz or Tenancy Services on 0800 836 262."
 """
@@ -55,6 +58,10 @@ _DEBUG_KEY = os.getenv("TENANCY_DEBUG_KEY", "")
 _RTA_URL = "https://www.legislation.govt.nz/act/public/1986/120/en/latest/"
 _rta_page_cache: tuple[str, float] | None = None
 _RTA_CACHE_TTL = 3600  # seconds
+
+_redis: aioredis.Redis | None = None
+_WEB_CACHE_TTL = 604800  # 7 days - NZ law changes via Parliament (months) or regulations (weeks)
+_WEB_CACHE_PREFIX = "nz_tenancy:web_verify:"
 
 _ALLOWED_ORIGIN = "https://tenancy.localrun.ai"
 _MAX_BODY_BYTES = 20_480  # 20 KB
@@ -120,19 +127,26 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _pipeline, _leg_store, _browser
+    global _pipeline, _leg_store, _browser, _redis
     _pipeline = RAGPipeline()
     _pipeline._generator = Generator(system_prompt=_TENANCY_SYSTEM_PROMPT)
     _pipeline._store = VectorStore(collection=config.QDRANT_TENANCY_COLLECTION)
     _leg_store = VectorStore(collection=config.QDRANT_COLLECTION)
     _browser = BrowserSession()
     await _browser.open()
+    try:
+        _redis = aioredis.from_url("redis://127.0.0.1:6379/0", decode_responses=True)
+        await _redis.ping()
+    except Exception:
+        _redis = None  # degrade gracefully if Redis unavailable
     asyncio.create_task(_fetch_rta_cached())  # warm cache before first request
     yield
     if _pipeline:
         await _pipeline.close()
     if _browser:
         await _browser.close()
+    if _redis:
+        await _redis.aclose()
 
 
 _REWRITE_SYSTEM = (
@@ -171,18 +185,57 @@ async def _rewrite_query(question: str) -> str:
         return question
 
 
+# Property-change query detection: terms that suggest a tenant altered the property.
+_PROP_CHANGE_TERMS = frozenset({
+    "plant", "planted", "planting", "tree", "trees", "shrub", "hedge",
+    "garden", "backyard", "back yard", "lawn", "landscap", "outdoor",
+    "built", "build", "building", "install", "installed", "installing",
+    "fixture", "improve", "improvement", "alteration", "alter", "altered",
+    "renovate", "renovation", "structure", "fence", "dug", "dig",
+    "added", "modify", "modification", "paint", "painted",
+})
+
+# Synthetic query tuned to surface s40/s42A/s42B from the leg_store embedding index.
+# Raw questions like "planted trees backyard" have low cosine similarity to those
+# section titles; this query bridges the gap.
+_PROP_CHANGE_SYNTHETIC_QUERY = (
+    "tenant obligations alter improve add fixtures to land garden written consent landlord "
+    "section 40 42A 42B residential tenancies act"
+)
+
+_PROP_CHANGE_DESIRED_SECTIONS = frozenset({"NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"})
+
+
+def _detect_prop_change(question: str) -> bool:
+    q = question.lower()
+    return any(term in q for term in _PROP_CHANGE_TERMS)
+
+
 async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
     """Return (anchor_text, leg_sources) for the top 2 RTA sections most relevant to the question.
 
     anchor_text is injected before the numbered [S1]-[SN] block so the LLM reads the
     actual Act text and cites correct section numbers without hallucinating them.
     leg_sources is sent to the frontend for display alongside Tribunal decisions.
+    For property-change queries, injects a synthetic embedding to surface s40/s42A/s42B
+    which may not rank highly from the raw question embedding alone.
     """
     if _leg_store is None or _pipeline is None:
         return "", []
     try:
         vector = await _pipeline._embedder.embed(question)
         raw = _leg_store.search(vector, top_k=12, courts=["NZLEG"])
+
+        if _detect_prop_change(question):
+            synth_vector = await _pipeline._embedder.embed(_PROP_CHANGE_SYNTHETIC_QUERY)
+            synth_raw = _leg_store.search(synth_vector, top_k=8, courts=["NZLEG"])
+            existing_ids = {h.case_id for h in raw}
+            desired_hits = [
+                h for h in synth_raw
+                if h.case_id in _PROP_CHANGE_DESIRED_SECTIONS and h.case_id not in existing_ids
+            ]
+            raw = desired_hits + raw  # prepend desired sections
+
         rta = [h for h in raw if h.case_id.startswith("NZLEG/RTA/")]
         seen: set[str] = set()
         hits = []
@@ -210,6 +263,99 @@ async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
         return "", []
 
 
+_PROP_CHANGE_CHUNK_LOCATION = frozenset({
+    "garden", "backyard", "back yard", "yard", "land", "premises", "section 40", "s40",
+    "outdoor", "lawn", "shrub", "hedge", "outside",
+})
+_PROP_CHANGE_CHUNK_ACTION = frozenset({
+    "fixture", "improvement", "alteration", "alter", "addition", "structure",
+    "consent", "section 42", "s42", "renovate", "renovation", "install",
+    "permission", "authoris", "authoriz", "permitted", "written consent",
+})
+
+
+def _prop_change_chunk_relevant(text: str) -> bool:
+    t = text.lower()
+    return (
+        any(term in t for term in _PROP_CHANGE_CHUNK_LOCATION)
+        and any(term in t for term in _PROP_CHANGE_CHUNK_ACTION)
+    )
+
+
+def _filter_prop_change_chunks(
+    context_texts: list[str], sources: list[dict]
+) -> tuple[list[str], list[dict]]:
+    """Keep only chunks that mention garden/land AND alteration/consent. Falls back to
+    original list if the filter would remove everything."""
+    pairs = [
+        (t, s) for t, s in zip(context_texts, sources)
+        if _prop_change_chunk_relevant(t)
+    ]
+    if not pairs:
+        return context_texts, sources
+    return [p[0] for p in pairs], [p[1] for p in pairs]
+
+
+def _web_cache_key(leg_sources: list[dict], fallback: str) -> str:
+    """Build Redis cache key from legislation section IDs, falling back to query text."""
+    ids = sorted({s.get("case_id", "") for s in leg_sources if s.get("case_id")})
+    slug = "|".join(ids) if ids else fallback[:80].lower().strip()
+    return f"{_WEB_CACHE_PREFIX}{slug}"
+
+
+async def _web_verify(
+    question: str,
+    leg_sources: list[dict],
+    alwaysonline: bool = False,
+) -> tuple[str, list[dict], bool]:
+    """Return (anchor_text, raw_results, from_cache).
+
+    Checks Redis first (keyed by law section IDs). Falls back to live search
+    on cache miss or when alwaysonline=True. Degrades silently on any error.
+    """
+    if _browser is None:
+        return "", [], False
+
+    cache_key = _web_cache_key(leg_sources, question)
+
+    if not alwaysonline and _redis is not None:
+        try:
+            cached = await _redis.get(cache_key)
+            if cached:
+                payload = json.loads(cached)
+                return payload["text"], payload["results"], True
+        except Exception:
+            pass
+
+    query = f"NZ residential tenancy law {question[:120]}"
+    try:
+        results = await asyncio.wait_for(
+            _browser.search_ddg(query, max_results=3),
+            timeout=20,
+        )
+    except Exception as exc:
+        logging.warning("_web_verify search failed: %s", exc)
+        return "", [], False
+
+    logging.info("_web_verify got %d results for: %s", len(results), query[:60])
+    if not results:
+        return "", [], False
+
+    lines = ["Current online sources (use to verify recent law changes):"]
+    for r in results:
+        lines.append(f"- {r['title']} | {r['url']}\n  {r['body']}")
+    text = "\n".join(lines)
+
+    if _redis is not None:
+        try:
+            payload = json.dumps({"text": text, "results": results, "query": query})
+            await _redis.setex(cache_key, _WEB_CACHE_TTL, payload)
+        except Exception:
+            pass
+
+    return text, results, False
+
+
 async def _fetch_rta_cached() -> str | None:
     """Return full RTA page text, fetching via headless browser and caching for 1 hour."""
     global _rta_page_cache
@@ -228,6 +374,32 @@ async def _fetch_rta_cached() -> str | None:
         return text
     except Exception:
         return None
+
+
+# Markers that indicate we are inside a penalty schedule, not a substantive section.
+_PENALTY_MARKERS = frozenset({
+    "schedule", "infringement fee", "infringement", "maximum amount",
+    "unlawful acts and penalties", "penalty notice",
+})
+
+
+def _extract_rta_section(full_text: str, num: str) -> str | None:
+    """Return the substantive text of RTA section `num` from the full page text.
+
+    Skips occurrences inside Schedule/penalty tables (e.g. "42A(7)   fine amount").
+    A real heading looks like "42A  Consent for tenant's fixtures, etc" - number at
+    line start followed by whitespace + capital letter title.  A penalty row looks
+    like "42A(7)   ..." - number immediately followed by '('.
+    """
+    heading_re = re.compile(rf"(?m)^\s*{re.escape(num)}\s+[A-Z][^\n]{{3,}}")
+    for m in heading_re.finditer(full_text):
+        window = full_text[max(0, m.start() - 400): m.start() + 50].lower()
+        if any(marker in window for marker in _PENALTY_MARKERS):
+            continue
+        candidate = full_text[m.start(): m.start() + 2500]
+        if re.search(r"\(\d+\)", candidate):
+            return candidate[:1800].strip()
+    return None
 
 
 def _build_live_anchor(full_text: str, leg_sources: list[dict]) -> str:
@@ -250,12 +422,9 @@ def _build_live_anchor(full_text: str, leg_sources: list[dict]) -> str:
     ]
     for ref in section_refs[:3]:
         num = re.sub(r'^[sS]', '', ref)
-        matches = list(re.finditer(rf"\n{re.escape(num)}\b", full_text))
-        for m in matches[-2:]:
-            candidate = full_text[m.start(): m.start() + 2500]
-            if re.search(r"\(\d+\)", candidate):
-                lines.append(f"\ns{num} {candidate[:1800].strip()}")
-                break
+        excerpt = _extract_rta_section(full_text, num)
+        if excerpt:
+            lines.append(f"\ns{num} {excerpt}")
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
@@ -296,16 +465,9 @@ async def _verify_sections(answer: str, leg_sources: list[dict]) -> list[dict]:
     results = []
     for ref in all_refs:
         num = re.sub(r'^[sS]', '', ref)
-        matches = list(re.finditer(rf"\n{re.escape(num)}\b", full_text))
-        for m in matches[-2:]:
-            candidate = full_text[m.start(): m.start() + 2500]
-            if re.search(r"\(\d+\)", candidate):
-                results.append({
-                    "reference": f"s{num}",
-                    "excerpt": candidate[:1800].strip(),
-                    "url": _RTA_URL,
-                })
-                break
+        excerpt = _extract_rta_section(full_text, num)
+        if excerpt:
+            results.append({"reference": f"s{num}", "excerpt": excerpt, "url": _RTA_URL})
     return results
 
 
@@ -314,7 +476,7 @@ _STATIC = Path(__file__).parent / "static"
 app = FastAPI(
     title="NZ Tenancy Help",
     description="Free NZ tenancy law research - powered by real Tribunal decisions",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -461,6 +623,8 @@ class AskRequest(BaseModel):
     debug_key: str = ""
     strategy: str = "vector"
     irac: bool = False
+    verify: bool = True       # include web search results in context
+    alwaysonline: bool = False  # bypass Redis cache, always fetch fresh
 
 
 class CompareRequest(BaseModel):
@@ -536,12 +700,21 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
                 retrieve_kwargs["min_chunks"] = 1
             retrieval_question = await _rewrite_query(question)
 
-            # Vector retrieve + RTA anchor lookup run in parallel
+            # Vector retrieve + RTA anchor run in parallel (web search needs leg_sources first)
             (context_texts, sources), (anchor_vstore, leg_sources) = await asyncio.gather(
                 _pipeline.retrieve(retrieval_question, **retrieve_kwargs),
                 _retrieve_rta_anchor(retrieval_question),
             )
             t_retrieve = time.monotonic() - t0
+
+            if _detect_prop_change(retrieval_question):
+                context_texts, sources = _filter_prop_change_chunks(context_texts, sources)
+
+            web_text, web_results, from_cache = "", [], False
+            if req.verify:
+                web_text, web_results, from_cache = await _web_verify(
+                    retrieval_question, leg_sources, alwaysonline=req.alwaysonline
+                )
 
             if not context_texts:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'I could not find enough relevant Tenancy Tribunal decisions to answer this question reliably. This tool covers NZ residential tenancy matters only.'})}\n\n"
@@ -557,8 +730,12 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
                 else None
             )
             anchor = _build_live_anchor(live_text, leg_sources) if live_text and leg_sources else anchor_vstore
+            if web_text:
+                anchor = (anchor + "\n\n---\n\n" if anchor else "") + web_text
 
             yield f"data: {json.dumps({'type': 'sources', 'sources': public_sources, 'legislation': leg_sources})}\n\n"
+            if web_results:
+                yield f"data: {json.dumps({'type': 'web_results', 'results': web_results, 'cached': from_cache})}\n\n"
             yield f"data: {json.dumps({'type': 'confidence', **_confidence(scores, strategy)})}\n\n"
 
             if debug_mode:
@@ -619,6 +796,9 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
         import time
         queue: asyncio.Queue = asyncio.Queue()
 
+        # Shared RTA anchor + leg_sources for web verify (same question, run once)
+        shared_anchor, shared_leg_sources = await _retrieve_rta_anchor(question)
+
         async def _run_strategy(strat: str, col_idx: int) -> None:
             t0 = time.monotonic()
             await queue.put({"type": "col_start", "strategy": strat, "col": col_idx})
@@ -637,14 +817,16 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
 
             t_retrieve = time.monotonic() - t0
 
+            if _detect_prop_change(question):
+                context_texts, sources = _filter_prop_change_chunks(context_texts, sources)
+
             if not context_texts:
                 await queue.put({"type": "col_error", "strategy": strat, "message": "No relevant decisions found for this strategy."})
                 return
 
             public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
             scores = [s["_score"] for s in sources]
-            anchor, leg_sources = await _retrieve_rta_anchor(question)
-            await queue.put({"type": "col_sources", "strategy": strat, "sources": public_sources, "legislation": leg_sources})
+            await queue.put({"type": "col_sources", "strategy": strat, "sources": public_sources, "legislation": shared_leg_sources})
             await queue.put({"type": "col_debug", "strategy": strat, "retrieve_ms": round(t_retrieve * 1000), "scores": scores, "top": max(scores), "min": min(scores), "avg": round(sum(scores) / len(scores), 4), "chunks": len(scores)})
             in_think = False
             think_parts: list[str] = []
@@ -653,7 +835,7 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
             try:
                 async for token in _pipeline._generator.generate_stream(
                     question, context_texts, sources, thinking=thinking,
-                    legislation_anchor=anchor or None,
+                    legislation_anchor=shared_anchor or None,
                 ):
                     if "<think>" in token:
                         in_think = True
@@ -678,6 +860,8 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
 
             await queue.put({"type": "col_done", "strategy": strat, "generate_ms": round((time.monotonic() - t_gen) * 1000), "total_ms": round((time.monotonic() - t0) * 1000)})
 
+        # Run web verify in parallel with strategy tasks
+        web_task = asyncio.create_task(_web_verify(question, shared_leg_sources))
         tasks = [asyncio.create_task(_run_strategy(s, i)) for i, s in enumerate(strategies)]
         finished = 0
         total = len(strategies)
@@ -689,13 +873,17 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
                 if event["type"] in ("col_done", "col_error"):
                     finished += 1
 
+            web_text, web_results, from_cache = await web_task
+            if web_results:
+                yield f"data: {json.dumps({'type': 'web_results', 'results': web_results, 'cached': from_cache})}\n\n"
             yield f"data: {json.dumps({'type': 'all_done'})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'col_error', 'strategy': 'all', 'message': str(exc)})}\n\n"
         finally:
+            web_task.cancel()
             for t in tasks:
                 t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(web_task, *tasks, return_exceptions=True)
             release(ip)
 
     return StreamingResponse(
@@ -703,6 +891,71 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class RetrieveRequest(BaseModel):
+    question: str
+    strategy: str = "vector"
+
+
+@app.post("/retrieve")
+async def retrieve(req: RetrieveRequest, request: Request) -> dict:
+    """Return RAG context without generating. Used by the agentic benchmark runner."""
+    _check_token(request)
+    question = _sanitize_question(req.question.strip())
+    if not question:
+        raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
+
+    strategy = req.strategy if req.strategy in _VALID_STRATEGIES else "vector"
+    retrieve_kwargs: dict = {"top_k": 5, "strategy": strategy}
+    if strategy != "bm25":
+        retrieve_kwargs.update({"min_score": 0.75, "min_chunks": 2})
+    else:
+        retrieve_kwargs["min_chunks"] = 1
+
+    retrieval_question = await _rewrite_query(question)
+
+    (context_texts, sources), (anchor_vstore, leg_sources) = await asyncio.gather(
+        _pipeline.retrieve(retrieval_question, **retrieve_kwargs),
+        _retrieve_rta_anchor(retrieval_question),
+    )
+
+    live_text = (
+        _rta_page_cache[0]
+        if _rta_page_cache and time.monotonic() - _rta_page_cache[1] < _RTA_CACHE_TTL
+        else None
+    )
+    anchor = _build_live_anchor(live_text, leg_sources) if live_text and leg_sources else anchor_vstore
+    public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
+
+    return {
+        "context_texts": context_texts,
+        "sources": public_sources,
+        "legislation": leg_sources,
+        "anchor": anchor,
+    }
+
+
+class SearchRequest(BaseModel):
+    query: str
+    max_results: int = 5
+
+
+@app.post("/search")
+async def search(req: SearchRequest, request: Request) -> dict:
+    """DuckDuckGo web search via the shared Playwright browser. Used by the agentic benchmark runner."""
+    _check_token(request)
+    query = req.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail={"error": "Query must not be empty."})
+    max_results = max(1, min(req.max_results, 10))
+    if _browser is None:
+        raise HTTPException(status_code=503, detail={"error": "Browser session not available."})
+    try:
+        results = await _browser.search_ddg(query, max_results=max_results)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail={"error": f"Search failed: {exc}"})
+    return {"results": results}
 
 
 @app.post("/feedback")

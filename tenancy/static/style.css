@@ -773,6 +773,75 @@ footer .footer-copyright { margin-top: 6px; opacity: 0.75; }
 .debug-stats span { color: #fff; }
 .debug-note { font-size: 0.75rem; color: #aaa; font-style: normal; }
 
+/* ---- Web verify panel ---- */
+/* Web verify panel - user-facing, not debug-only */
+#web-panel {
+  background: #16213e;
+  border: 1px solid #2a3f5f;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-top: 12px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #d0d8e8;
+}
+
+#web-panel h4 {
+  color: #a8c4e8;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* Span all columns when inside compare grid */
+.compare-grid #web-panel {
+  grid-column: 1 / -1;
+}
+
+.web-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: bold;
+  letter-spacing: 0.6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.web-badge-live   { background: #1a6b3a; color: #5effa0; border: 1px solid #2ecc71; }
+.web-badge-cached { background: #2a3a5a; color: #8ab4f8; border: 1px solid #4a6fa0; }
+
+.web-result-row {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2a3a54;
+}
+.web-result-row:last-child { border-bottom: none; margin-bottom: 0; }
+
+.web-result-link {
+  color: #7dd3fc;
+  text-decoration: none;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.web-result-link:hover { color: #bae6fd; text-decoration: underline; }
+
+.web-result-domain { color: #6aaa6a; font-size: 0.72rem; }
+
+.web-result-body {
+  color: #a8b8cc;
+  margin-top: 2px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .debug-strategy {
   display: none;
   flex-direction: row;

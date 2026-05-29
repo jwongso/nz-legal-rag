@@ -77,17 +77,19 @@ function _renderDebugPanel(dbg, dbgDone) {
   const isBm25 = dbg.strategy === 'bm25';
   const maxScore = Math.max(...scores, 0.0001);
 
-  const bars = scores.map((s, i) => {
-    // For BM25, normalise bar width to top score; for vector use absolute scale
+  const barData = scores.map((s, i) => {
     const pct = isBm25 ? Math.round((s / maxScore) * 100) : Math.round(s * 100);
     const cls = isBm25 ? 'mid' : (s >= 0.80 ? 'high' : s >= 0.76 ? 'mid' : 'low');
     const label = isBm25 ? s.toFixed(5) : s.toFixed(4);
-    return `<div class="debug-score-row">
+    return { pct, cls, label, i };
+  });
+  const bars = barData.map(({ pct, cls, label, i }) =>
+    `<div class="debug-score-row">
       <span class="debug-score-label">S${i + 1}</span>
-      <div class="debug-score-bar-wrap"><div class="debug-score-bar ${cls}" style="width:${pct}%"></div></div>
+      <div class="debug-score-bar-wrap"><div class="debug-score-bar ${cls}" data-pct="${pct}"></div></div>
       <span class="debug-score-val">${label}</span>
-    </div>`;
-  }).join('');
+    </div>`
+  ).join('');
 
   const strategyLabel = _STRATEGY_LABELS[dbg.strategy] || dbg.strategy || 'vector';
   const scoreNote = isBm25 ? ' <span class="debug-note">(BM25 scale, bars normalised)</span>' : '';
@@ -105,7 +107,36 @@ function _renderDebugPanel(dbg, dbgDone) {
   panel.id = 'debug-panel';
   panel.className = 'debug-panel';
   panel.innerHTML = `<h4>Retrieval debug &mdash; <em>${strategyLabel}</em>${scoreNote}</h4>${bars}${stats}`;
+  panel.querySelectorAll('.debug-score-bar[data-pct]').forEach(el => {
+    el.style.width = el.dataset.pct + '%';
+  });
   resultCard.appendChild(panel);
+}
+
+function _renderWebPanel(webEvent, container) {
+  const existing = document.getElementById('web-panel');
+  if (existing) existing.remove();
+
+  const cached = webEvent.cached;
+  const results = webEvent.results || [];
+
+  const badge = cached
+    ? '<span class="web-badge web-badge-cached">CACHED (7d)</span>'
+    : '<span class="web-badge web-badge-live">LIVE</span>';
+
+  const rows = results.map(r => {
+    const domain = (() => { try { return new URL(r.url).hostname; } catch (_) { return r.url; } })();
+    return `<div class="web-result-row">
+      <a class="web-result-link" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)}</a>
+      <span class="web-result-domain">${escapeHtml(domain)}</span>
+      <div class="web-result-body">${escapeHtml(r.body)}</div>
+    </div>`;
+  }).join('');
+
+  const panel = document.createElement('div');
+  panel.id = 'web-panel';
+  panel.innerHTML = `<h4>Web verify ${badge}</h4>${rows || '<span class="debug-note">no results</span>'}`;
+  (container || resultCard).appendChild(panel);
 }
 
 let _apiToken = '';
@@ -141,7 +172,7 @@ const feedbackText = document.getElementById('feedback-text');
 const feedbackSubmit = document.getElementById('feedback-submit');
 const feedbackThanks = document.getElementById('feedback-thanks');
 
-const app_js_version = 25;
+const app_js_version = 30;
 const LOADING_MESSAGES = [
   'Searching through Tenancy Tribunal decisions...',
   'Analysing relevant cases...',
@@ -154,6 +185,7 @@ let loadingStep = 0;
 let currentQuestion = '';
 let currentRating = null;
 let _debugInfo = null;
+let _webResultsInfo = null;
 
 // ---- Character counter ----
 questionEl.addEventListener('input', () => {
@@ -451,6 +483,10 @@ function resetToForm() {
   if (cb) cb.remove();
   const vp = document.getElementById('verification-panel');
   if (vp) vp.remove();
+  const wp = document.getElementById('web-panel');
+  if (wp) wp.remove();
+  const dp = document.getElementById('debug-panel');
+  if (dp) dp.remove();
   questionEl.value = '';
   charCountEl.textContent = '0';
   questionEl.focus();
@@ -657,6 +693,8 @@ function _colSetError(strategy, msg) {
 
 async function _submitCompare(question, strategies) {
   submitBtn.disabled = true;
+  _debugInfo = null;
+  _webResultsInfo = null;
   _buildCompareColumns(strategies);
   askAnotherRow.classList.remove('visible');
 
@@ -721,7 +759,10 @@ async function _submitCompare(question, strategies) {
           _colFinalise(s);
         } else if (ev.type === 'col_error') {
           _colSetError(s, ev.message);
+        } else if (ev.type === 'web_results') {
+          _webResultsInfo = ev;
         } else if (ev.type === 'all_done') {
+          if (_webResultsInfo) _renderWebPanel(_webResultsInfo, compareGrid);
           askAnotherRow.classList.add('visible');
         }
       }
@@ -752,6 +793,8 @@ form.addEventListener('submit', async (e) => {
   }
 
   showLoading();
+  _debugInfo = null;
+  _webResultsInfo = null;
 
   let res;
   try {
@@ -815,6 +858,8 @@ form.addEventListener('submit', async (e) => {
           renderSources(streamedSources, streamedLegislation);
         } else if (event.type === 'confidence') {
           renderConfidence(event);
+        } else if (event.type === 'web_results') {
+          _webResultsInfo = event;
         } else if (event.type === 'debug') {
           _debugInfo = event;
         } else if (event.type === 'debug_done') {
@@ -829,6 +874,7 @@ form.addEventListener('submit', async (e) => {
           answerBody.textContent = rawAnswer;
         } else if (event.type === 'done') {
           finaliseResult(rawAnswer, streamedSources, streamedLegislation);
+          if (_webResultsInfo) _renderWebPanel(_webResultsInfo);
         } else if (event.type === 'verification') {
           renderVerification(event.sections);
         } else if (event.type === 'error') {
