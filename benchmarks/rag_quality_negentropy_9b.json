@@ -1,0 +1,199 @@
+{
+  "model": "Negentropy-claude-opus-4.7-9B-Q5_K_M",
+  "date": "2026-05-29",
+  "strategy": "vector",
+  "results": {
+    "Q1_no_cause_termination": {
+      "question": "My landlord gave me 90 days notice to vacate but didn't give any reason. The tenancy is periodic and started in 2022. Is this notice valid?",
+      "answer": "Yes, the notice can be valid. Under the Residential Tenancies Act 1986, a landlord can terminate a periodic tenancy by giving 90 days' notice without having to give a reason [S2]. This right was confirmed by a law change that took effect on 30 January 2025 [S4].\n\nFor your notice to be valid, two things need to be true:\n\n1. **The tenancy must be periodic** \u2013 You've confirmed this is the case [S2].\n\n2. **The notice must be given within the \"effective period\"** \u2013 This is the time when the landlord is legally allowed to give 90 days' notice without a reason. Since the law changed on 30 January 2025, your notice must have been given on or after that date [S4].\n\nThe landlord doesn't need to provide a reason for the termination [S2], so the fact they didn't give one is not a problem.\n\n**Important:** If your tenancy is actually a fixed-term agreement (not periodic), the 90-day notice wouldn't be valid [S1]. But you've confirmed yours is periodic.\n\n**How to check if your notice is valid:**\n- Look at the date on your notice\n- If it was given before 30 January 2025, it may not be valid\n- If it was given on or after that date, it's likely valid\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "sources": [
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5423733.html",
+          "date": "21/01/2026"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5287862.html",
+          "date": "08/07/2025"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5065549.html",
+          "date": "17/01/2025"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5257959.html",
+          "date": "04/08/2025"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5230879.html",
+          "date": "04/08/2025"
+        }
+      ],
+      "elapsed_s": 10.1
+    },
+    "Q2_fixed_term_expiry": {
+      "question": "My fixed term tenancy ended 3 weeks ago. My landlord says I have no rights because the contract expired. Neither of us signed a new agreement. Do I have to leave?",
+      "answer": "Based on the Tenancy Tribunal decisions provided, here is what you need to know about your situation:\n\n**You likely still have rights under your fixed term tenancy.**\n\nA fixed term tenancy is a contract for a defined period, and it can only be changed by agreement between both parties or by a Tribunal order [S5]. Since neither of you signed a new agreement, your original tenancy terms still apply.\n\n**You are not required to leave immediately.**\n\nThe Tribunal has made it clear that a fixed term tenancy continues until it expires, even if the landlord wants it to end [S4]. In one case, a tenant remained liable for rent until the end of the fixed term even though the tenancy had technically \"ended\" [S5].\n\n**Your landlord cannot simply tell you to leave.**\n\nThe Tribunal has ruled that a landlord is not required to find a new tenant [S5], and a fixed term tenancy can only be changed by mutual agreement or Tribunal order [S5]. Without a new agreement signed by both parties, your original tenancy continues.\n\n**What you should do:**\n\n1. **Check your original tenancy agreement** to confirm the exact end date\n2. **Communicate in writing** with your landlord about your situation\n3. **Do not vacate** until you are certain the tenancy has legally ended\n4. **If your landlord pressures you to leave**, you can contact Tenancy Services on 0800 836 262 for free advice\n\nThe key point from these cases is that fixed term tenancies are legally binding contracts, and simply letting the term \"expire\" doesn't automatically release you from your obligations or give your landlord the right to demand immediate departure without proper process.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "sources": [
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4904821.html",
+          "date": "11/10/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4933242.html",
+          "date": "09/08/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4641451.html",
+          "date": "26/10/2023"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4909844.html",
+          "date": "25/10/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4472350.html",
+          "date": "04/03/2024"
+        }
+      ],
+      "elapsed_s": 11.6
+    },
+    "Q3_retaliatory_notice": {
+      "question": "I complained to Tenancy Services about mould on 1 March. My landlord gave me a termination notice on 15 April citing sale of property. Is there anything I can do?",
+      "answer": "Based on the Tenancy Tribunal decisions provided, here is what you can do:\n\n**1. Check if the notice is retaliatory**\n\nA termination notice given shortly after you complained about mould may be considered retaliatory. In [S1], the Tribunal found that a notice given because of a mould report was acting \"without the necessary authority\" and could be seen as retaliatory [S1]. The Tribunal specifically looked at whether the notice was given because of the tenant's complaint or actions, not just because of the mould itself [S1].\n\n**2. The \"sale of property\" reason is not valid**\n\nYour landlord cannot use \"sale of property\" as a valid reason to end your tenancy. The Residential Tenancies Act 1986 does not allow landlords to terminate tenancies for this reason. The Tribunal has rejected such notices when they are not based on proper grounds under the Act.\n\n**3. You may be entitled to compensation**\n\nIn [S2], the Tribunal ordered $500 compensation to tenants because the landlord failed to adequately respond to mould concerns. The Tribunal noted that tenants had complained about mould affecting their health and that of their children, and the landlord's failure to address this properly warranted compensation [S2].\n\n**4. Your complaint to Tenancy Services is important**\n\nYour complaint to Tenancy Services on 1 March is significant evidence. In [S2], an email from a tenant complaining about mould was used as evidence that the landlord had been informed of the issue [S2]. Your written complaint creates a clear record that you raised the issue before the notice was given.\n\n**What you should do now:**\n\n- Contact Tenancy Services immediately on 0800 836 262 to report the retaliatory notice\n- Gather all evidence: your complaint date, any correspondence with your landlord, photos of mould, medical records if mould affected your health\n- Do not leave the property until the notice is properly resolved\n- Consider applying to the Tenancy Tribunal for an urgent hearing\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "sources": [
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4904078.html",
+          "date": "27/09/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4614190.html",
+          "date": "03/10/2023"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4626690.html",
+          "date": "19/02/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4953614.html",
+          "date": "01/11/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4668069.html",
+          "date": "10/11/2023"
+        }
+      ],
+      "elapsed_s": 13.2
+    },
+    "Q4_rent_reduction_clock": {
+      "question": "My landlord reduced my rent from $600 to $550 per week in January by agreement. In August (7 months later) they want to increase it back to $600. Under the 12-month rule, can they do this?",
+      "answer": "Based on the Tenancy Tribunal decisions provided, here is the answer to your question:\n\n**Yes, your landlord can increase the rent back to $600 per week.**\n\nUnder the Residential Tenancies Act 1986, a landlord has the right to increase the rent every 12 months after giving at least 60 days' written notice [S1]. Since your landlord reduced your rent in January and now wants to increase it in August (7 months later), they are well within the 12-month rule.\n\n**Important things to know:**\n\n1. **The 12-month rule applies to the original tenancy agreement** - A landlord cannot increase the rent more than once every 12 months and can only increase the rent in a fixed term tenancy if the tenancy agreement allows [S3].\n\n2. **Your agreement to reduce rent doesn't change this** - The Tribunal has found in other cases that agreements to reduce rent are limited to their specific timeframe. For example, in one case, the Tribunal found that a rent reduction only applied \"up until\" a certain date, and rent returned to the original amount after that date [S4]. Similarly, in another case, the Tribunal found that a landlord had offered reduced rent only \"over the marketing phase of the sale\" and \"six weeks free rent at the end of the tenancy\" [S5].\n\n3. **You should check your tenancy agreement** - Make sure you have at least 60 days' written notice before the increase takes effect [S1].\n\n**For advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.**",
+      "sources": [
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4849526.html",
+          "date": "22/07/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5166471.html",
+          "date": "25/03/2025"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5151871.html",
+          "date": "26/05/2025"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4996951.html",
+          "date": "14/10/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4873681.html",
+          "date": "15/07/2024"
+        }
+      ],
+      "elapsed_s": 10.6
+    },
+    "Q5_meth_threshold": {
+      "question": "The landlord tested the property after I moved out and found methamphetamine contamination of 2.0 micrograms per 100cm2. They are claiming the full bond plus additional damages for remediation. Are they entitled to this?",
+      "answer": "Based on the Tenancy Tribunal decisions provided, here's what tenants need to know about methamphetamine contamination claims:\n\n**The Tribunal supports landlords' right to test and claim costs**\n\nThe Tribunal confirmed that landlords are justified in having premises tested for methamphetamine contamination after a tenancy ends [S5]. They can recover these costs as a \"reasonable and foreseeable loss\" caused by the tenant's breach of their obligations [S5].\n\n**What the Tribunal has awarded in similar cases**\n\nIn the cases provided, the Tribunal awarded:\n- The full insurance excess of $2,500 for remediation [S3]\n- $600 in exemplary damages [S4]\n- Reimbursement of the bond for testing and decontamination [S1]\n- Reimbursement of filing fees [S1]\n\n**Important factors the Tribunal considers**\n\nThe Tribunal looks at the actual contamination levels found. In one case, levels ranging from 14.5 \u03bcg to 15.8 \u03bcg per 100cm\u00b2 were found, with the higher level considered \"relatively high\" [S4]. The Tribunal also considers:\n- The impact on the landlord (vacant premises for months, stress, inconvenience) [S4]\n- Whether remediation work is \"lengthy and considerable\" [S4]\n- Whether the contamination affected the landlord's ability to re-let the property [S4]\n\n**What this means for your situation**\n\nThe Tribunal has shown it will support legitimate claims for methamphetamine remediation costs, including the full bond if needed. However, the specific award depends on the actual contamination levels, the extent of remediation required, and the impact on the landlord.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "sources": [
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4914336.html",
+          "date": "08/10/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/5014208.html",
+          "date": "28/11/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4731031.html",
+          "date": "16/04/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4756350.html",
+          "date": "22/04/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4510709.html",
+          "date": "02/08/2024"
+        }
+      ],
+      "elapsed_s": 11.5
+    },
+    "Q6_bond_topup": {
+      "question": "My rent increased from $500 to $600 per week last month. My landlord is now demanding I pay an extra $400 bond to bring it up to 4 weeks of the new rent. Is this legal?",
+      "answer": "Yes, your landlord is acting legally in this situation.\n\nUnder the Residential Tenancies Act 1986, when rent is lawfully increased, the landlord may require you to pay an additional bond amount that does not exceed the increase in rent for four weeks [S2].\n\nIn your case:\n- Your rent increased by $100 per week ($600 \u2212 $500)\n- Four weeks of that increase = $100 \u00d7 4 = $400\n\nSo the $400 your landlord is asking for is exactly the maximum amount they are allowed to request under the law [S2].\n\nA few things to keep in mind:\n- The landlord must give you at least 60 days' notice before the rent increase takes effect [S1]\n- The bond increase must be paid within 14 days of the rent increase taking effect (though this specific timeframe isn't mentioned in the sources provided)\n- The bond can never be more than four weeks' rent at the current rent level\n\nIf you have any concerns about the notice period or how the increase was communicated, you can contact Tenancy Services on 0800 836 262 for free advice.\n\nFor advice on your specific situation, contact Community Law (free) at communitylaw.org.nz or Tenancy Services on 0800 836 262.",
+      "sources": [
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4500760.html",
+          "date": "01/06/2023"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2024/4769538.html",
+          "date": "19/02/2024"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2026/5336484.html",
+          "date": "27/03/2026"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2023/4581611.html",
+          "date": "28/07/2023"
+        },
+        {
+          "citation": null,
+          "url": "https://www.nzlii.org/nz/cases/NZTT/2025/5146008.html",
+          "date": "22/04/2025"
+        }
+      ],
+      "elapsed_s": 8.9
+    }
+  }
+}
