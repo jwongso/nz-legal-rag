@@ -455,6 +455,40 @@ textarea:focus {
   color: var(--muted);
 }
 
+.sources-group-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin: 12px 0 5px 0;
+}
+
+.sources-group-label:first-child { margin-top: 0; }
+
+.source-card--leg {
+  border-color: #d4a830;
+  background: #fdfaf0;
+}
+
+.source-num--leg {
+  background: #d4a830;
+}
+
+.compare-sources-group {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin: 8px 0 3px 0;
+}
+
+/* ---- AI warning ---- */
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 /* ---- AI warning ---- */
 .ai-warning {
   margin-top: 14px;

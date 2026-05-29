@@ -266,25 +266,44 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderSources(sources) {
-  if (!sources || sources.length === 0) {
+function renderSources(sources, legislation) {
+  const hasLeg = legislation && legislation.length > 0;
+  const hasDec = sources && sources.length > 0;
+  if (!hasLeg && !hasDec) {
     sourcesSection.classList.remove('visible');
     return;
   }
-  sourcesList.innerHTML = sources.map((s, i) => {
-    const court = s.court_name || 'Tenancy Tribunal';
-    const date = s.date || '';
-    const label = date ? `${court} Decision - ${date}` : `${court} Decision`;
-    const rawUrl = s.url || '';
-    const url = rawUrl.startsWith('https://') ? rawUrl : '#';
-    return `
-      <div class="source-card">
-        <span class="source-num">S${i + 1}</span>
-        <div class="source-info">
-          <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>
-        </div>
-      </div>`;
-  }).join('');
+  let html = '';
+  if (hasLeg) {
+    if (hasDec) html += '<div class="sources-group-label">Relevant legislation</div>';
+    html += legislation.map(s => {
+      const url = (s.url || '').startsWith('https://') ? s.url : '#';
+      return `
+        <div class="source-card source-card--leg">
+          <span class="source-num source-num--leg">&sect;</span>
+          <div class="source-info">
+            <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.case_id)}</a>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  if (hasDec) {
+    if (hasLeg) html += '<div class="sources-group-label">Tribunal decisions</div>';
+    html += sources.map((s, i) => {
+      const court = s.court_name || 'Tenancy Tribunal';
+      const date = s.date || '';
+      const label = date ? `${court} Decision - ${date}` : `${court} Decision`;
+      const url = (s.url || '').startsWith('https://') ? s.url : '#';
+      return `
+        <div class="source-card">
+          <span class="source-num">S${i + 1}</span>
+          <div class="source-info">
+            <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  sourcesList.innerHTML = html;
   sourcesSection.classList.add('visible');
 }
 
@@ -360,9 +379,9 @@ function showStreamingResult() {
   resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function finaliseResult(fullText, sources) {
+function finaliseResult(fullText, sources, legislation) {
   answerBody.innerHTML = renderAnswer(fullText);
-  renderSources(sources);
+  renderSources(sources, legislation);
   resetFeedback();
   submitBtn.disabled = false;
 }
@@ -538,17 +557,29 @@ function _colSetThink(strategy, text) {
   col.querySelector('.compare-col-body').insertBefore(details, col.querySelector('.compare-col-answer'));
 }
 
-function _colSetSources(strategy, sources) {
+function _colSetSources(strategy, sources, legislation) {
   const col = document.getElementById(_colId(strategy));
   if (!col) return;
-  if (!sources || !sources.length) return;
-  col.querySelector('.compare-col-sources').innerHTML =
-    '<div class="compare-sources-label">Sources</div>' +
-    sources.map((s, i) => {
+  const hasLeg = legislation && legislation.length > 0;
+  const hasDec = sources && sources.length > 0;
+  if (!hasLeg && !hasDec) return;
+  let html = '<div class="compare-sources-label">Sources</div>';
+  if (hasLeg) {
+    if (hasDec) html += '<div class="compare-sources-group">&sect; Legislation</div>';
+    html += legislation.map(s => {
+      const url = (s.url || '').startsWith('https://') ? s.url : '#';
+      return `<div class="compare-source-row"><span class="source-num source-num--leg">&sect;</span> <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.case_id)}</a></div>`;
+    }).join('');
+  }
+  if (hasDec) {
+    if (hasLeg) html += '<div class="compare-sources-group">Decisions</div>';
+    html += sources.map((s, i) => {
       const label = s.date ? `${s.court_name || 'Tribunal'} - ${s.date}` : (s.court_name || 'Tribunal');
       const url = (s.url || '').startsWith('https://') ? s.url : '#';
       return `<div class="compare-source-row"><span class="source-num">S${i+1}</span> <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a></div>`;
     }).join('');
+  }
+  col.querySelector('.compare-col-sources').innerHTML = html;
 }
 
 function _colSetScores(strategy, dbg) {
@@ -628,7 +659,7 @@ async function _submitCompare(question, strategies) {
           _colSetActive(s);
           colAnswers[s] = '';
         } else if (ev.type === 'col_sources') {
-          _colSetSources(s, ev.sources);
+          _colSetSources(s, ev.sources, ev.legislation);
         } else if (ev.type === 'col_debug') {
           _colSetScores(s, ev);
         } else if (ev.type === 'col_think') {
@@ -710,6 +741,7 @@ form.addEventListener('submit', async (e) => {
   let buffer = '';
   let rawAnswer = '';
   let streamedSources = [];
+  let streamedLegislation = [];
   let streamingStarted = false;
 
   try {
@@ -728,7 +760,8 @@ form.addEventListener('submit', async (e) => {
 
         if (event.type === 'sources') {
           streamedSources = event.sources;
-          renderSources(streamedSources);
+          streamedLegislation = event.legislation || [];
+          renderSources(streamedSources, streamedLegislation);
         } else if (event.type === 'debug') {
           _debugInfo = event;
         } else if (event.type === 'debug_done') {
@@ -742,7 +775,7 @@ form.addEventListener('submit', async (e) => {
           rawAnswer += event.text;
           answerBody.textContent = rawAnswer;
         } else if (event.type === 'done') {
-          finaliseResult(rawAnswer, streamedSources);
+          finaliseResult(rawAnswer, streamedSources, streamedLegislation);
         } else if (event.type === 'error') {
           showError(event.message || 'An error occurred.');
           return;
@@ -751,7 +784,7 @@ form.addEventListener('submit', async (e) => {
     }
     // If stream ended without a 'done' event, finalise what we have
     if (streamingStarted && rawAnswer) {
-      finaliseResult(rawAnswer, streamedSources);
+      finaliseResult(rawAnswer, streamedSources, streamedLegislation);
     }
   } catch (_) {
     showError('Lost connection while receiving the answer. Please try again.');
