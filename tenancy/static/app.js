@@ -160,7 +160,7 @@ const feedbackText = document.getElementById('feedback-text');
 const feedbackSubmit = document.getElementById('feedback-submit');
 const feedbackThanks = document.getElementById('feedback-thanks');
 
-const app_js_version = 16;
+const app_js_version = 23;
 const LOADING_MESSAGES = [
   'Searching through Tenancy Tribunal decisions...',
   'Analysing relevant cases...',
@@ -278,9 +278,12 @@ function renderSources(sources, legislation) {
     if (hasDec) html += '<div class="sources-group-label">Relevant legislation</div>';
     html += legislation.map(s => {
       const url = (s.url || '').startsWith('https://') ? s.url : '#';
+      const secMatch = (s.case_id || '').match(/\/s(\d+[A-Z]?)$/i);
+      const secNum = secMatch ? secMatch[1] : '';
+      const dataAttr = secNum ? ` data-section="${escapeHtml(secNum)}"` : '';
       return `
         <div class="source-card source-card--leg">
-          <span class="source-num source-num--leg">&sect;</span>
+          <span class="source-num source-num--leg leg-sec-toggle"${dataAttr} title="Show decisions citing this section">&sect;</span>
           <div class="source-info">
             <a class="source-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.case_id)}</a>
           </div>
@@ -305,6 +308,48 @@ function renderSources(sources, legislation) {
   }
   sourcesList.innerHTML = html;
   sourcesSection.classList.add('visible');
+}
+
+function renderConfidence(ev) {
+  const existing = document.getElementById('confidence-badge');
+  if (existing) existing.remove();
+  if (!ev || !ev.level) return;
+  const badge = document.createElement('div');
+  badge.id = 'confidence-badge';
+  badge.className = `confidence-badge confidence-${ev.level}`;
+  const icons = { high: '●', medium: '◑', low: '○' };
+  badge.innerHTML = `<span class="confidence-icon">${icons[ev.level] || '●'}</span> <span class="confidence-msg">${escapeHtml(ev.message)}</span>`;
+  const aiWarning = resultCard.querySelector('.ai-warning');
+  if (aiWarning) resultCard.insertBefore(badge, aiWarning);
+}
+
+async function fetchLegislationCases(sectionNum, badgeEl) {
+  const existing = badgeEl.closest('.source-card--leg').querySelector('.leg-cases-panel');
+  if (existing) { existing.remove(); return; }
+  const panel = document.createElement('div');
+  panel.className = 'leg-cases-panel';
+  panel.textContent = 'Loading...';
+  badgeEl.closest('.source-card--leg').appendChild(panel);
+  try {
+    const r = await fetch(`/legislation/cases?section=${encodeURIComponent(sectionNum)}&limit=8`, {
+      headers: { 'X-API-Key': _apiToken },
+    });
+    const data = await r.json();
+    const cases = data.cases || [];
+    if (!cases.length) {
+      panel.textContent = 'No indexed decisions found for this section.';
+      return;
+    }
+    panel.innerHTML = `<div class="leg-cases-label">Decisions citing s${escapeHtml(sectionNum)}</div>` +
+      cases.map(c => {
+        const url = (c.url || '').startsWith('https://') ? c.url : '#';
+        const date = c.date || '';
+        const n = c.mentions || 1;
+        return `<div class="leg-case-row"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(date)}</a><span class="leg-case-mentions">${n}x</span></div>`;
+      }).join('');
+  } catch (_) {
+    panel.textContent = 'Could not load decisions.';
+  }
 }
 
 // ---- Feedback ----
@@ -401,6 +446,8 @@ function resetToForm() {
   errorCard.classList.remove('visible');
   sourcesSection.classList.remove('visible');
   askAnotherRow.classList.remove('visible');
+  const cb = document.getElementById('confidence-badge');
+  if (cb) cb.remove();
   questionEl.value = '';
   charCountEl.textContent = '0';
   questionEl.focus();
@@ -712,6 +759,7 @@ form.addEventListener('submit', async (e) => {
         question,
         debug_key: _debugKey,
         strategy: strategies[0] || 'vector',
+        irac: document.getElementById('irac-toggle').checked,
       }),
     });
   } catch (_) {
@@ -762,6 +810,8 @@ form.addEventListener('submit', async (e) => {
           streamedSources = event.sources;
           streamedLegislation = event.legislation || [];
           renderSources(streamedSources, streamedLegislation);
+        } else if (event.type === 'confidence') {
+          renderConfidence(event);
         } else if (event.type === 'debug') {
           _debugInfo = event;
         } else if (event.type === 'debug_done') {
@@ -789,6 +839,13 @@ form.addEventListener('submit', async (e) => {
   } catch (_) {
     showError('Lost connection while receiving the answer. Please try again.');
   }
+});
+
+// ---- Legislation section click (delegated) ----
+sourcesList.addEventListener('click', e => {
+  const toggle = e.target.closest('.leg-sec-toggle');
+  if (!toggle || !toggle.dataset.section) return;
+  fetchLegislationCases(toggle.dataset.section, toggle);
 });
 
 // ---- Ask another / retry ----

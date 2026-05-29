@@ -211,6 +211,48 @@ async def debug_ping(request: Request) -> dict:
     return {"ok": True}
 
 
+@app.get("/legislation/cases")
+async def legislation_cases(request: Request, section: str = "", limit: int = 8) -> dict:
+    """Return NZTT decisions that mention a specific RTA section in their text."""
+    _check_token(request)
+    section = section.strip().lstrip("sS").strip()
+    if not section.isdigit() and not re.match(r"^\d+[A-Z]?$", section, re.IGNORECASE):
+        raise HTTPException(status_code=400, detail={"error": "Invalid section number."})
+    limit = min(max(limit, 1), 20)
+
+    import psycopg2
+    pattern = rf"(?:s\.?\s*{re.escape(section)}|section\s+{re.escape(section)})(?:\s*\(|\b)"
+    sql = """
+        SELECT d.citation, d.source_url,
+               to_char(d.decision_date, 'DD/MM/YYYY') AS date,
+               count(*) AS mentions
+        FROM chunks ch
+        JOIN documents d ON ch.document_id = d.id
+        WHERE d.court = 'NZTT'
+          AND d.citation LIKE 'NZTT-MOJ-%%'
+          AND ch.text ~* %s
+        GROUP BY d.id, d.citation, d.source_url, d.decision_date
+        ORDER BY mentions DESC, d.decision_date DESC
+        LIMIT %s
+    """
+    try:
+        conn = psycopg2.connect(dbname="nz_legal")
+        cur = conn.cursor()
+        cur.execute(sql, (pattern, limit))
+        rows = cur.fetchall()
+        conn.close()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)})
+
+    return {
+        "section": f"s{section}",
+        "cases": [
+            {"citation": r[0], "url": r[1], "date": r[2], "mentions": r[3]}
+            for r in rows
+        ],
+    }
+
+
 async def _check_llm() -> None:
     try:
         async with httpx.AsyncClient(timeout=3) as client:
@@ -241,11 +283,37 @@ _feedback_last: TTLCache = TTLCache(maxsize=2000, ttl=_FEEDBACK_COOLDOWN_S)
 
 _VALID_STRATEGIES = {"vector", "vector_no_legal", "mmr", "bm25"}
 
+_IRAC_SUFFIX = (
+    "\n\nStructure your answer as a legal research memo using IRAC format:\n"
+    "**Issue:** State the specific legal question raised.\n"
+    "**Rule:** State the legal principles that appear in the retrieved decisions, with [SN] citations.\n"
+    "**Application:** Explain how those principles apply to these facts, with [SN] citations.\n"
+    "**Conclusion:** Summarise what comparable decisions suggest about this situation."
+)
+
+
+def _confidence(scores: list[float], strategy: str) -> dict:
+    n = len(scores)
+    if n == 0:
+        return {"level": "low", "chunks": 0, "message": "No relevant decisions found."}
+    top = max(scores)
+    if strategy == "bm25":
+        level = "high" if n >= 4 else "medium" if n >= 2 else "low"
+    else:
+        level = "high" if top >= 0.82 and n >= 4 else "medium" if top >= 0.77 and n >= 2 else "low"
+    messages = {
+        "high": f"Found {n} directly relevant decisions.",
+        "medium": f"Found {n} relevant decisions - review the cited sources carefully.",
+        "low": f"Found only {n} loosely related decisions - verify independently before acting.",
+    }
+    return {"level": level, "chunks": n, "message": messages[level]}
+
 
 class AskRequest(BaseModel):
     question: str
     debug_key: str = ""
     strategy: str = "vector"
+    irac: bool = False
 
 
 class CompareRequest(BaseModel):
@@ -327,16 +395,18 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'I could not find enough relevant Tenancy Tribunal decisions to answer this question reliably. This tool covers NZ residential tenancy matters only.'})}\n\n"
                 return
 
+            scores = [s["_score"] for s in sources]
             public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
             anchor, leg_sources = await _retrieve_rta_anchor(question)
             yield f"data: {json.dumps({'type': 'sources', 'sources': public_sources, 'legislation': leg_sources})}\n\n"
+            yield f"data: {json.dumps({'type': 'confidence', **_confidence(scores, strategy)})}\n\n"
 
             if debug_mode:
-                scores = [s["_score"] for s in sources]
                 yield f"data: {json.dumps({'type': 'debug', 'strategy': strategy, 'retrieve_ms': round(t_retrieve * 1000), 'scores': scores, 'top': max(scores), 'min': min(scores), 'avg': round(sum(scores) / len(scores), 4), 'chunks': len(scores)})}\n\n"
 
+            gen_question = question + _IRAC_SUFFIX if req.irac else question
             t_gen = time.monotonic()
-            async for token in _pipeline._generator.generate_stream(question, context_texts, sources, legislation_anchor=anchor or None):
+            async for token in _pipeline._generator.generate_stream(gen_question, context_texts, sources, legislation_anchor=anchor or None):
                 yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
 
             if debug_mode:
