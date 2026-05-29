@@ -485,11 +485,6 @@ textarea:focus {
 }
 
 /* ---- AI warning ---- */
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-/* ---- AI warning ---- */
 .ai-warning {
   margin-top: 14px;
   padding: 8px 12px;
