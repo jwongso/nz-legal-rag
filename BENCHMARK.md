@@ -5,7 +5,9 @@ Benchmarks run on 2026-05-21 (initial), 2026-05-22 (legal ranker + tracker-first
 2026-05-23 (answer quality), 2026-05-23 (complete 8B GPU baseline run - sections 7-10),
 2026-05-23 (quantization sweep Q4/Q5/Q6 - section 11),
 2026-05-23 (embedding model shootout - section 12),
-and 2026-05-23 (embedding vs answer quality - section 13).
+2026-05-23 (embedding vs answer quality - section 13),
+2026-05-29 (LLM shootout sections 14-19: raw knowledge, RAG+live anchor, model comparisons),
+and 2026-05-30 (section 20: agentic benchmark with Playwright web search, all models equal tools).
 Source data:
 `benchmarks/reports/comprehensive_report.md`, `benchmarks/reports/rerank_sweep.md`,
 `benchmarks/reports/latest.json`, `benchmarks/reports/context_packing.md`,
@@ -1182,3 +1184,335 @@ disables thinking entirely, or (c) a rewrite of the generator to skip
 given Qwen3-8B's superior score at 5-7x faster latency.
 
 Result file: `benchmarks/rag_quality_deepseek_v4_flash_9b.json`
+
+---
+
+## Section 17 - Granite Guardian 4.1 8B RAG + Live Anchor (2026-05-29)
+
+Tested `ibm-granite/granite-guardian-4.1-8b-GGUF` Q5_K_M with the same RAG + live
+legislation setup as Section 15.
+
+### Hardware note
+
+`--n-gpu-layers 999` caused cudaMalloc failure (204MB compute buffer OOM on 8188MB
+shared VRAM). Granite Guardian 4.1 has a 131K training context which inflates the KV
+cache allocation even at `--ctx-size 4096`. Fixed by using `--n-gpu-layers 20`.
+
+### Result: Unusable - safety classifier, not a chat model
+
+**Score: 0/6 (0%) - all answers are safety verdict tokens, not prose**
+
+All six questions produced output of the form:
+
+```
+<think>
+</think>
+<score> no </score>
+```
+
+Two questions (Q2 and Q4) hit max_tokens=1500 and produced looping output:
+
+```
+<think>
+</think>
+<score> no </score></think>
+<score> no </score></think>
+<score> no </score>...
+```
+
+Root cause: Granite Guardian 4.1 8B is a safety guardrail model designed to
+classify inputs as safe/unsafe. Its output format is `<score> yes/no </score>`,
+not natural-language answers. It is not a chat or instruction-following model.
+
+**Verdict:** Wrong model type. Granite Guardian is a content safety classifier.
+For the NZ legal RAG use case, use Granite 3.3 8B Instruct (the instruction-tuned
+sibling - see Section 18).
+
+Result file: `benchmarks/rag_quality_granite_guardian_4_1_8b.json`
+
+---
+
+## Section 18 - Granite 3.3 8B Instruct RAG + Live Anchor (2026-05-29)
+
+Tested `ibm-granite/granite-3.3-8b-instruct-GGUF` Q5_K_M with the same RAG + live
+legislation setup as Section 15. Full GPU offload (`--n-gpu-layers 999`) with no VRAM
+issues (no extended context training like Guardian).
+
+### Results
+
+| # | Signal terms | Granite 3.3 8B Instruct |
+|---|---|---|
+| Q1 | valid, 90-day, s51 | PASS |
+| Q2 | periodic, continues, s60 | PASS |
+| Q3 | retaliatory, s54A, presumption | FAIL |
+| Q4 | does not reset, last increase | FAIL |
+| Q5 | 1.5, caused, causation | FAIL |
+| Q6 | s18, Tribunal, legal | PASS |
+| **Score** | | **3/6 (50%)** |
+| **Avg latency** | | **12.9s** |
+
+### Per-Question Analysis
+
+**Q1 (PASS):** Correctly identified the 90-day no-cause notice as valid under
+restored s51(1) RTA. Cited the correct section and procedural requirements.
+
+**Q2 (PASS):** Correctly identified automatic periodic conversion under s60A.
+Stated the tenant has the right to continue as a periodic tenant.
+
+**Q3 (FAIL):** The model identified the "retaliatory" framing but misapplied s56A.
+It described s56A as "allows a tenant to terminate a tenancy if the premises are
+unlawful residential premises" - which is a different provision entirely. The
+correct analysis is that a tenant can apply to the Tribunal under s54A/s56A to
+have a retaliatory termination notice declared invalid. The model then pivoted
+to s59/59A (uninhabitable premises) as an alternative, which does not apply here.
+
+**Q4 (FAIL):** The model concluded "the 12-month rent increase restriction does
+not apply here" because the reduction was by agreement. This is wrong. The
+12-month restriction (s24) does apply to any increase; a rent reduction does not
+reset the clock. The correct answer is: the clock runs from the last INCREASE,
+not the reduction. Whether the August increase is permitted depends on when the
+rent was last raised to $600 (not when it was reduced from $600). The model
+reached the same destination by wrong logic without doing the date arithmetic.
+
+**Q5 (FAIL):** Cited the old 15 ug/100cm2 threshold (from pre-2017 NZS 8510
+standard). Current threshold is 1.5 ug/100cm2 under the Residential Tenancies
+(Methamphetamine Contamination) Regulations 2020. Same known limitation as other
+models - the threshold is in the Regulations, not the RTA, and the live anchor
+does not fetch it. The model concluded 2.0 ug is "below" the 15 ug threshold,
+advising the landlord cannot claim damages - which is the opposite of the correct
+answer (2.0 ug exceeds the 1.5 ug threshold, so the landlord has a valid claim).
+
+**Q6 (PASS):** Correctly concluded that the $400 top-up demand is legal under
+s18(2). Note: the model incorrectly stated the current bond as "$560" (not in the
+question) but the final legal conclusion was correct.
+
+### vs Other Models
+
+| Model | Score | Avg latency | Notes |
+|---|---|---|---|
+| Qwen3-8B-Q5_K_M | 6/6 (100%) | 8.7s | Production model |
+| Negentropy-9B-Q5_K_M | 5/6 (83%) | 12.9s | Fails Q3 |
+| Granite 3.3 8B Instruct-Q5_K_M | 3/6 (50%) | 12.9s | Fails Q3, Q4, Q5 |
+| DeepSeek-V4-Flash-Q5_K_M | 0/6 (0%) | ~60s | Reasoning model incompatible |
+| Granite Guardian 4.1 8B-Q5_K_M | 0/6 (0%) | 6-100s | Safety classifier, wrong model type |
+
+### Conclusion
+
+Granite 3.3 8B Instruct scores 3/6 at the same latency as Negentropy (12.9s avg).
+Both are substantially behind Qwen3-8B (6/6, 8.7s). Key weaknesses:
+
+- s56A retaliatory notice analysis confused with tenant termination provisions
+- Rent clock analysis reaches wrong conclusion via faulty reasoning
+- Outdated meth threshold (15 ug vs 1.5 ug) - shared limitation with all models
+
+**Verdict:** Not competitive with Qwen3-8B for NZ tenancy law QA. Qwen3-8B-Q5_K_M
+remains the production default.
+
+Result file: `benchmarks/rag_quality_granite_3_3_8b_instruct.json`
+
+---
+
+## Section 19 - Mistral 7B Instruct v0.3 RAG + Live Anchor (2026-05-29)
+
+Tested `bartowski/Mistral-7B-Instruct-v0.3-GGUF` Q5_K_M with the same RAG + live
+legislation setup as Section 15. Full GPU offload (`--n-gpu-layers 999`), `thinking = 0`.
+
+### Results
+
+| # | Signal terms | Mistral 7B Instruct v0.3 |
+|---|---|---|
+| Q1 | valid, 90-day, s51 | FAIL |
+| Q2 | periodic, continues, s60 | PASS |
+| Q3 | retaliatory, s54A, presumption | FAIL |
+| Q4 | does not reset, last increase | FAIL |
+| Q5 | 1.5, caused, causation | FAIL |
+| Q6 | s18, Tribunal, legal | PASS |
+| **Score** | | **2/6 (33%)** |
+| **Avg latency** | | **8.6s** |
+
+### Per-Question Analysis
+
+**Q1 (FAIL):** The model opened with "the notice given by your landlord may not be
+valid" and then mixed scenarios from multiple cases (renovations, principal place of
+residence). It never identified that the 2024 Act restored no-cause 90-day termination.
+The answer is indecisive and leans toward invalid.
+
+**Q2 (PASS):** Correctly stated the tenancy automatically becomes periodic when
+neither party acts before expiry.
+
+**Q3 (FAIL):** Mentioned the landlord "may not have had a valid reason" but grounded
+this only in a single case about mould authority, not in the retaliatory notice
+provisions (s54A/s56A). No mention of the 90-day rebuttable presumption.
+
+**Q4 (FAIL):** Stated "your landlord may not increase the rent until at least 12
+months have passed since the rent was reduced." This reverses the rule - the 12-month
+clock runs from the last INCREASE, not the last change. A reduction does not restart
+the clock. The correct analysis: the August increase depends on when the rent was last
+raised to $600, not on the January reduction date.
+
+**Q5 (FAIL):** Acknowledged "ongoing uncertainty about what level of methamphetamine
+residue is considered 'damage'" and that "the Residential Tenancies Act 1986 does not
+set a standard for this." Technically accurate on the RTA point but unhelpful - does
+not state the 1.5 ug/100cm2 Regulations threshold. Same known limitation as all models.
+
+**Q6 (PASS):** Quoted s18(2) verbatim ("a further sum not exceeding the amount by
+which the rent payable for four weeks has been increased") and correctly implied that
+$400 ($100 increase x 4 weeks) is the legal maximum. Hedged on legality of the
+underlying rent increase but correctly identified the bond top-up as permissible.
+
+### vs Other Models
+
+| Model | Score | Avg latency | Notes |
+|---|---|---|---|
+| Qwen3-8B-Q5_K_M | 6/6 (100%) | 8.7s | Production model |
+| Negentropy-9B-Q5_K_M | 5/6 (83%) | 12.9s | Fails Q3 |
+| Granite 3.3 8B Instruct-Q5_K_M | 3/6 (50%) | 12.9s | Fails Q3, Q4, Q5 |
+| Mistral-7B-Instruct-v0.3-Q5_K_M | 2/6 (33%) | 8.6s | Fails Q1, Q3, Q4, Q5 |
+| DeepSeek-V4-Flash-Q5_K_M | 0/6 (0%) | ~60s | Reasoning model incompatible |
+| Granite Guardian 4.1 8B-Q5_K_M | 0/6 (0%) | 6-100s | Safety classifier, wrong model type |
+
+### Conclusion
+
+Mistral 7B Instruct v0.3 scores 2/6, tying Granite 3.3 8B Instruct on accuracy at
+the same latency as Qwen3-8B (8.6s vs 8.7s). The speed is competitive but the NZ
+legal knowledge is weaker - it misses the 2024 RTA amendment, applies the 12-month
+rent clock incorrectly, and does not know the retaliatory notice framework.
+
+Mistral's training data likely has sparse coverage of NZ-specific amendments vs
+global common law. RAG partially compensates but cannot overcome fundamental gaps
+in jurisdictional grounding when the model's priors point in the wrong direction.
+
+**Verdict:** Not competitive for NZ tenancy law. Qwen3-8B-Q5_K_M remains the
+production default.
+
+Result file: `benchmarks/rag_quality_mistral_7b_instruct_v0_3.json`
+
+---
+
+## Section 20 - Agentic Benchmark: All Models, Equal Tools (2026-05-30)
+
+All four 7-9B models re-run under identical conditions with live web search tools available.
+Ground truth: `benchmarks/groundtruth.md` (corrected for April 2026 meth threshold and actual s54 retaliatory-notice law).
+
+### Test Conditions
+
+| Parameter | Value |
+|---|---|
+| ctx-size | 5120 tokens |
+| KV cache | q8_0 (halves VRAM usage vs fp16; required to fit 8 GB GPU) |
+| parallel | 1 (benchmark is sequential) |
+| max_tokens | 3500 per round |
+| max_tool_rounds | 6 |
+| Force tool on round 1 | yes (tool_choice="required") |
+| web_search backend | Playwright Firefox via `/search` endpoint (Tenancy app) |
+| fetch_url backend | urllib with Chrome UA, 2500-char limit |
+| RAG context | vector strategy, top_k=5, min_score=0.75 |
+| Thinking suppression | thinking: disabled in payload (effective for Qwen3; ignored by Negentropy) |
+
+### Ground Truth Summary
+
+| Q | Key conclusion | Key legal basis | Key trap |
+|---|---|---|---|
+| Q1 | Notice VALID | s51(1) restored by RTAA 2024 | Model trained pre-Jan 2025 says "invalid" |
+| Q2 | Tenant stays (periodic) | s60A automatic conversion | Confusing holdover s60 with periodic conversion s60A |
+| Q3 | Apply within 28 working days | s54 retaliatory notice | Using s56A (uninhabitable premises) instead |
+| Q4 | Clock from last INCREASE only | s24 (reduction does not reset) | Saying reduction resets the 12-month clock |
+| Q5 | 15 ug/100cm2 threshold | April 2026 Regulations (reverts to NZS 8510:2017) | Using 1.5 ug (repealed 2020 Regulations) |
+| Q6 | $400 demand is LEGAL | s18(2): 4 weeks x $100 increase = $400 | Confusing "4 weeks of new rent" with "4 weeks of increase" |
+
+### Results
+
+| Model | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Score |
+|---|---|---|---|---|---|---|---|
+| Qwen3-8B-Q5_K_M | PASS | PASS | FAIL | FAIL | PASS | PASS | **4/6** |
+| Granite-3.3-8B-Q5_K_M | PASS | FAIL | FAIL | FAIL | PASS | PASS | **3/6** |
+| Mistral-7B-v0.3-Q5_K_M | FAIL | PASS | FAIL | FAIL | FAIL | FAIL | **1/6** |
+| Negentropy-9B-Q5_K_M | FAIL | FAIL | FAIL | FAIL | FAIL | FAIL | **0/6** |
+
+### Tool Usage
+
+| Model | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Tools used |
+|---|---|---|---|---|---|---|---|
+| Qwen3-8B | web_search | web_search | web_search | none | web_search | web_search | 5/6 |
+| Negentropy-9B | 6 calls (loop) | none | none | web_search | 4 calls (loop) | web_search | 4/6 calls but unreliable |
+| Granite-3.3-8B | none | none | none | none | none | none | 0/6 |
+| Mistral-7B | none | none | none | none | none | none | 0/6 |
+
+Granite and Mistral both ignored tool_choice="required" on the first round and answered directly from RAG context.
+Negentropy used tools on 4 questions but entered search loops on Q1 (6 calls) and Q5 (4 calls), exhausting max_tool_rounds without answering.
+
+### Per-Question Analysis
+
+**Q1 - 90-day no-cause notice (post-RTAA 2024)**
+- Qwen3: searched, found the 2024 amendment, correctly says VALID citing s51(1). PASS.
+- Granite: no search but RAG context contained relevant Tribunal decisions; correctly says VALID citing s51(1) and notes the 2024 RTAA. PASS.
+- Mistral: says "might be valid" - too hedged, does not clearly answer. FAIL.
+- Negentropy: search loop (web_search + fetch_url x3), max_tool_rounds exceeded, no answer. FAIL.
+
+**Q2 - Fixed term expiry, automatic periodic conversion**
+- Qwen3: searched, correctly identifies s60A automatic periodic conversion; says tenant doesn't need to leave. PASS.
+- Granite: cites s60 (holdover continuance obligations) not s60A; implies tenant may need to wait 90 days before periodic tenancy arises - misleading. FAIL.
+- Mistral: correctly cites s60A and says tenant does not need to leave. PASS.
+- Negentropy: thinking tokens exhausted 3500-token budget before generating content; finish=length, empty answer. FAIL.
+
+**Q3 - Retaliatory notice (s54)**
+- Qwen3: searched but answer leads with s56A (unlawful premises / 2-day notice for uninhabitable property) before mentioning retaliation. Groundtruth key trap is exactly this s56A confusion. FAIL.
+- Granite: tells tenant to apply under s56A arguing mould makes premises unlawful; never reaches s54. FAIL.
+- Mistral: mentions retaliation as a possibility but gives no actionable advice (no s54, no 28-working-day deadline, no exemplary damages). FAIL.
+- Negentropy: thinking exhausted tokens, empty answer. FAIL.
+
+**Q4 - Rent reduction does not reset the 12-month clock**
+- Qwen3: context overflow on first round (finish=length with empty content); forced tool call never completed. FAIL.
+- Granite: says the rent was "increased from $600 to $550" (confuses direction), applies 12-month rule from the reduction date. FAIL.
+- Mistral: says "since the rent reduction was agreed upon in January, the 12-month period starts from that date" - clock from reduction (wrong). FAIL.
+- Negentropy: searched and answered but says "the 12-month rule applies to any rent change whether increase or decrease" and concludes the clock resets from January. Wrong. FAIL.
+
+**Q5 - Meth threshold 15 ug/100cm2 (April 2026 Regulations)**
+- Qwen3: searched, found the April 2026 Regulations, correctly states 15 ug/100cm2; says landlord not entitled. PASS.
+- Granite: no search but cites s49B(1) and 15 ug/100cm2 - correct answer. The 15 ug threshold is from NZS 8510:2017 which Granite's training data includes; the 2026 Regulations reverted to this standard. PASS.
+- Mistral: says "there is ongoing uncertainty... there are no standards set" - completely wrong. FAIL.
+- Negentropy: search loop (4 calls) then context overflow (HTTP 400), no answer. FAIL.
+
+**Q6 - Bond top-up demand ($400)**
+- Qwen3: searched, says legal under s18(2), gives $400 figure. PASS.
+- Granite: no search, says legal under s18(2), gives $400 figure (though labels it confusingly as "one week's rent" in parenthetical; conclusion and section correct). PASS.
+- Mistral: misreads s18(2), calculates maximum additional bond as $200, which is wrong. FAIL.
+- Negentropy: searched but answer was cut off at token limit (finish=length), no usable answer. FAIL.
+
+### Key Findings
+
+**Tool use does not automatically improve accuracy.**
+Qwen3 scored 4/6 using tools on 5/6 questions. Negentropy used tools on 4/6 questions yet scored 0/6. The bottleneck for Negentropy is architectural: its thinking tokens consume the token budget before conclusions are reached, and when search fires it enters loops. Tool availability matters only if the model can also complete the generation.
+
+**Granite and Mistral ignore tool_choice="required".**
+Both models answered directly from RAG context without firing any tool. This is a limitation of smaller models and older tool-use instruction tuning (Mistral v0.3 predates widespread tool-use training; Granite 3.3 8B appears to ignore the required constraint in favour of direct completion).
+
+**Q3 (retaliatory notice) failed across all four models.**
+All models either confused s54 with s56A or gave vague advice without the actionable 28-working-day deadline. This is the hardest question: it requires knowing an obscure provision (s54), the specific time limit (28 working days for expedited application), and the correct remedy (exemplary damages up to $6,500). No model achieved this without search producing a clear s54 result.
+
+**Q4 (rent clock) also failed across all four models.**
+The nuance is that only a rent INCREASE restarts the 12-month clock, not a reduction. Every model that produced an answer said the reduction restarted the clock. Qwen3 failed because its context hit the token limit before the tool call could complete.
+
+**Granite 3.3 8B is competitive despite zero tool use.**
+At 3/6 it outperforms Mistral (1/6) despite using no search tools. Its stronger instruction tuning and apparent knowledge of both the 2024 RTAA amendment and the pre-2020 meth threshold (15 ug) make it a useful RAG-only option.
+
+### Hardware Notes
+
+All runs: RTX 4060 8 GB, full GPU offload (n-gpu-layers=999), ctx-size=5120, parallel=1, q8_0 KV cache.
+Moving from ctx-size=4096/parallel=2 to ctx-size=5120/parallel=1 with q8_0 KV cache was necessary because:
+- ctx=4096 caused HTTP 400 context-overflow errors after adding tool results to the conversation
+- q8_0 KV cache halves VRAM from ~800 MB to ~400 MB, fitting all models within the 8 GB budget alongside the tenancy app (714 MB) and API server (666 MB)
+
+### Conclusion
+
+| Rank | Model | Score | Tool use | Key strength |
+|---|---|---|---|---|
+| 1 | Qwen3-8B-Q5_K_M | 4/6 | Reliable (5/6 Qs) | Finds post-cutoff law changes via search |
+| 2 | Granite-3.3-8B-Q5_K_M | 3/6 | None | Strong RAG-only; knows 2024 RTAA |
+| 3 | Mistral-7B-v0.3-Q5_K_M | 1/6 | None | Only s60A correct; weak on NZ specifics |
+| 4 | Negentropy-9B-Q5_K_M | 0/6 | Unreliable (loops) | Architecture incompatible with tool-use loop |
+
+Qwen3-8B-Q5_K_M remains the production default. Its search grounding allowed it to correctly identify both the April 2026 meth regulation (Q5) and the January 2025 RTAA restoration of no-cause notices (Q1) - both post-dating all models' training cutoffs.
+
+Result files: `benchmarks/agent_qwen3_8b.json`, `benchmarks/agent_negentropy_9b.json`,
+`benchmarks/agent_granite_3_3_8b.json`, `benchmarks/agent_mistral_7b.json`

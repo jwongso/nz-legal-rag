@@ -146,10 +146,12 @@ function _buildAnchorCard(s, anchorMethod) {
     const found = forbidden[t];
     return `<span class="${found ? 'ctx-forbidden-fail' : 'ctx-forbidden-ok'}">${escapeHtml(t)}: ${found ? 'YES' : 'no'}</span>`;
   }).join(' | ');
+  const noText = !s.tokens || s.tokens === 0;
   const card = document.createElement('div');
   card.className = 'ctx-card ctx-card-leg';
   card.innerHTML = `<div class="ctx-card-header">${escapeHtml(num)} - ${escapeHtml(s.title || '')}</div>
 <div class="ctx-card-meta">legislation | ${escapeHtml(anchorMethod || '')} | ~${s.tokens ?? '?'} tokens | score: n/a</div>
+${noText ? '<div class="ctx-anchor-warn">Warning: anchor section selected but no text extracted - section was not sent to model. Heading pattern may not match or section lacks subsection markers.</div>' : ''}
 <div class="ctx-card-forbidden">Forbidden terms: ${checks}</div>
 <div class="ctx-card-preview">${escapeHtml((s.preview || '').slice(0, 400))}</div>`;
   return card;

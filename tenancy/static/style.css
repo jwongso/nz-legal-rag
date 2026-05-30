@@ -1165,6 +1165,16 @@ footer .footer-copyright { margin-top: 6px; opacity: 0.75; }
   padding-top: 4px;
   margin-top: 3px;
 }
+.ctx-anchor-warn {
+  color: #e07030;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin: 3px 0;
+  padding: 3px 7px;
+  background: #2a1506;
+  border-left: 3px solid #e07030;
+  border-radius: 3px;
+}
 .ctx-expand-btn {
   background: none;
   border: 1px solid #2a4a6a;

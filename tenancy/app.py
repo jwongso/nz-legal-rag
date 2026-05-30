@@ -211,14 +211,39 @@ def _detect_prop_change(question: str) -> bool:
     return any(term in q for term in _PROP_CHANGE_TERMS)
 
 
+# Fair wear and tear / tenant damage query detection.
+# "wear and tear" has low cosine similarity to "s49A Tenant not liable" section titles,
+# so the embedding index often surfaces s66N (mitigation) or s49B instead of the core
+# rule. Force s49A and s49B to the front for these queries.
+_WEAR_TEAR_TERMS = frozenset({
+    "fair wear and tear", "wear and tear",
+    "tenant damage", "damage claim",
+    "landlord charge", "repair cost",
+    "liable for damage", "damage to the",
+    "s49a", "s49b",
+})
+
+_WEAR_TEAR_SYNTHETIC_QUERY = (
+    "tenant not liable fair wear tear exception section 49A damage landlord cannot charge "
+    "deterioration reasonable use natural forces residential tenancies act"
+)
+
+_WEAR_TEAR_DESIRED_SECTIONS = frozenset({"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40"})
+
+
+def _detect_wear_tear(question: str) -> bool:
+    q = question.lower()
+    return any(term in q for term in _WEAR_TEAR_TERMS)
+
+
 async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
     """Return (anchor_text, leg_sources) for the top 2 RTA sections most relevant to the question.
 
     anchor_text is injected before the numbered [S1]-[SN] block so the LLM reads the
     actual Act text and cites correct section numbers without hallucinating them.
     leg_sources is sent to the frontend for display alongside Tribunal decisions.
-    For property-change queries, injects a synthetic embedding to surface s40/s42A/s42B
-    which may not rank highly from the raw question embedding alone.
+    Lexicon injections prepend desired sections for query types where raw embeddings
+    produce poor section matches (property-change, wear-and-tear).
     """
     if _leg_store is None or _pipeline is None:
         return "", []
@@ -233,6 +258,16 @@ async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
             desired_hits = [
                 h for h in synth_raw
                 if h.case_id in _PROP_CHANGE_DESIRED_SECTIONS and h.case_id not in existing_ids
+            ]
+            raw = desired_hits + raw  # prepend desired sections
+
+        if _detect_wear_tear(question):
+            synth_vector = await _pipeline._embedder.embed(_WEAR_TEAR_SYNTHETIC_QUERY)
+            synth_raw = _leg_store.search(synth_vector, top_k=8, courts=["NZLEG"])
+            existing_ids = {h.case_id for h in raw}
+            desired_hits = [
+                h for h in synth_raw
+                if h.case_id in _WEAR_TEAR_DESIRED_SECTIONS and h.case_id not in existing_ids
             ]
             raw = desired_hits + raw  # prepend desired sections
 
