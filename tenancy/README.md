@@ -365,22 +365,113 @@ Matches near "schedule", "infringement fee", "penalty", or "maximum amount" are
 also rejected. The result must contain subsection markers `(1)`, `(2)` etc to
 confirm it is substantive text.
 
-### Property-change query routing
+### Statute routing layer
 
-Queries that mention `plant`, `tree`, `garden`, `backyard`, `fixture`,
-`alteration`, `install`, `renovate`, or similar terms trigger two adjustments:
+`tenancy/rta_routes.py` is a structured routing table that sits between query
+rewrite and `leg_store` vector search. It solves a recurring problem: casual
+question language has low cosine similarity to formal RTA section titles, so
+the embedding search returns wrong or irrelevant sections.
 
-**Legislation:** A synthetic embedding query targets s40/s42A/s42B directly,
-because raw question embeddings ("planted trees backyard") have low cosine
-similarity to section titles ("Consent for tenant's fixtures"). The desired
-sections are prepended to leg_store results so they are always selected first.
+#### Design
 
-**Cases:** A topical relevance gate keeps only chunks that mention
-garden/land/premises AND alteration/consent/fixture. This filters irrelevant
-cases (unlawful termination, business use of property) that match broadly on
-"property" and "breach" but contribute no useful reasoning.
+```
+original query + rewritten query
+  -> match_routes()       -- check against ROUTES table
+  -> for each match:
+       embed route.synthetic_query
+       leg_store.search()
+       filter to route.forced_sections
+       prepend to vector results (deduplicated)
+  -> allow_section()      -- suppress known false-positive sections
+  -> deduplicate, take top 2
+```
 
-Both filters fall back to the original results if the gate removes everything.
+Both original and rewritten query are combined for matching. The original
+often contains colloquial signals ("work and income", "broken oven"); the
+rewrite carries formal legal terms ("bond lodgement", "repair obligations").
+
+#### Routes
+
+| Intent | Trigger terms (sample) | Forced sections |
+|---|---|---|
+| `wear_and_tear` | "fair wear and tear", "damage claim", "landlord charge" | s49A, s49B, s40 |
+| `property_change` | "plant", "tree", "garden", "fixture", "alteration" | s40, s42A, s42B |
+| `repairs_maintenance` | "not working", "broken", "mould", "hot water", "maintenance" | s45 |
+| `agreement_form` | "tenancy agreement", "before signing", "copy of agreement" | s13 |
+| `bond` | "bond lodgement", "work and income", "bond receipt", "proof of bond" | s18, s19 |
+| `landlord_entry` | "landlord entry", "inspection notice", "24 hours notice" | s48 |
+| `termination_notice` | "evict", "90 days notice", "end the tenancy", "notice to leave" | s51 |
+| `rent_payment` | "rent increase", "raise the rent", "weeks rent in advance" | s54, s55 |
+
+Each route has a `synthetic_query` string tuned to retrieve the forced
+sections from the leg_store embedding index. This bridges the gap between
+casual question language and formal section titles.
+
+#### Section suppression guard
+
+`LOW_PRIORITY_SECTIONS` lists sections that are false positives for many
+common queries. `allow_section()` suppresses them unless the query
+explicitly contains terms that make them relevant.
+
+| Suppressed section | Suppressed unless query mentions |
+|---|---|
+| s16A (landlord must have NZ agent if overseas) | "landlord overseas", "out of new zealand", "21 consecutive days" |
+
+This directly fixed a live failure: s16A was surfacing for a bond/agreement
+formation question because "bond" embeddings have some overlap with agent
+notification obligations.
+
+#### Case relevance gate (property-change only)
+
+For property-change queries, a separate case chunk filter (`_filter_prop_change_chunks`)
+keeps only chunks that mention garden/land/premises AND alteration/consent/fixture.
+This filters irrelevant cases that match broadly on "property" and "breach" but
+contribute no useful reasoning. Falls back to the original results if the gate
+removes everything.
+
+#### Debug visibility
+
+The `context_debug` SSE event (always emitted, panel rendered in debug mode only)
+includes a `statute_routing` block:
+
+```json
+{
+  "statute_routing": {
+    "triggered": true,
+    "matched_routes": ["agreement_form", "bond"],
+    "trigger_terms": ["tenancy agreement", "bond", "work and income"],
+    "forced_sections": ["NZLEG/RTA/s13", "NZLEG/RTA/s18", "NZLEG/RTA/s19"],
+    "suppressed_sections": [
+      {
+        "section": "NZLEG/RTA/s16A",
+        "reason": "low_priority_section - query does not mention relevant terms"
+      }
+    ]
+  }
+}
+```
+
+This block is also stored in every thumbs-down `feedback_full.jsonl` entry
+(for all users, not just debug mode), making routing failures immediately
+diagnosable from the feedback log.
+
+#### Adding a new route
+
+Add one `StatuteRoute(...)` block to `ROUTES` in `tenancy/rta_routes.py`:
+
+```python
+StatuteRoute(
+    intent=RouteIntent.MY_NEW_INTENT,
+    include_any=("term1", "term2", ...),
+    forced_sections=("NZLEG/RTA/sXX",),
+    synthetic_query="formal legal language matching the target section...",
+    exclude_any=(),   # optional: prevent false matches with other intents
+    notes="What this route covers.",
+),
+```
+
+Then add a regression entry to `benchmarks/datasets/retrieval_gold.jsonl`
+with `expected_documents` and `must_not_include` for the old wrong sections.
 
 ### "Already done" prompt rule
 
@@ -411,11 +502,14 @@ Edge cases covered: nonexistent section returns None, empty text returns None,
 penalty-only text returns None, text without subsection markers returns None,
 result length between 100 and 1800 chars.
 
-### Regression test
+### Regression tests
 
-`benchmarks/datasets/retrieval_gold.jsonl` entry `tenancy_planted_trees_backyard`
-asserts:
+`benchmarks/datasets/retrieval_gold.jsonl` contains routing regression entries.
+Each was added after a confirmed failure was observed and fixed.
 
-- Legislation retrieved: `NZLEG/RTA/s42A`, `NZLEG/RTA/s42B` (not s19 or s16A)
-- Cases acceptable: `NZTT-MOJ-5408751` (backyard structures), `NZTT-MOJ-4717450` (s40 garden)
-- Forbidden in anchor: "Schedule 1A", "infringement fee", "19(2)", "42A(7)"
+| Entry | Route triggered | Must include | Must not include | Failure it catches |
+|---|---|---|---|---|
+| `tenancy_planted_trees_backyard` | `property_change` | s42A, s42B | s19, s16A | Fixture-consent sections not surfacing for garden queries |
+| `tenancy_fair_wear_and_tear` | `wear_and_tear` | s49A, s49B | s66N | s49A missing; s66N (mitigation) surfacing instead |
+| `tenancy_bond_proof_before_agreement` | `agreement_form`, `bond` | s13, s18, s19 | s16A | s16A (overseas agent) surfacing for bond/agreement query |
+| `tenancy_landlord_repairs_maintenance` | `repairs_maintenance` | s45 | s42A, s42B | Fixture-consent sections surfacing for repair-obligation query |
