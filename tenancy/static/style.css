@@ -1060,6 +1060,95 @@ footer .footer-copyright { margin-top: 6px; opacity: 0.75; }
   overflow-y: auto;
 }
 
+/* ---- Context debug panel ---- */
+.context-debug-panel {
+  background: #0d1b2a;
+  border: 1px solid #1e3a5f;
+  border-radius: var(--radius);
+  margin-top: 10px;
+  font-size: 0.79rem;
+  color: #c0cfe0;
+  overflow: hidden;
+}
+.compare-grid .shared-context-debug-panel {
+  grid-column: 1 / -1;
+}
+.context-debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  color: #7baad4;
+  font-weight: 600;
+  font-size: 0.79rem;
+  list-style: none;
+  user-select: none;
+}
+.context-debug-toggle::-webkit-details-marker { display: none; }
+.context-debug-toggle::before {
+  content: '\25B6';
+  font-size: 0.62rem;
+  transition: transform 0.15s;
+}
+.context-debug-panel[open] > .context-debug-toggle::before {
+  transform: rotate(90deg);
+}
+.context-debug-body {
+  padding: 0 14px 12px;
+}
+.ctx-query-block {
+  background: #111f30;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.ctx-query-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 3px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.ctx-label {
+  color: #5a82a0;
+  min-width: 130px;
+  flex-shrink: 0;
+  font-size: 0.74rem;
+}
+.ctx-query-text { color: #c8daea; line-height: 1.4; }
+.ctx-rewrite-changed { color: #d4a830; }
+.ctx-meta-val { color: #b0c4d8; }
+.ctx-gate-yes { color: #f0a030; }
+.ctx-section-label {
+  color: #4a6a8a;
+  font-size: 0.71rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 10px 0 4px;
+}
+.ctx-card {
+  border-radius: 6px;
+  padding: 7px 10px;
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+.ctx-card-leg  { background: #162616; border-left: 3px solid #d4a830; }
+.ctx-card-case { background: #0f1d2d; border-left: 3px solid #4a7faa; }
+.ctx-card-header { color: #dde8f0; font-weight: 600; margin-bottom: 2px; }
+.ctx-card-meta  { color: #6a90b0; font-size: 0.73rem; margin-bottom: 2px; }
+.ctx-card-forbidden { font-size: 0.72rem; margin-bottom: 3px; }
+.ctx-forbidden-ok   { color: #4aaa4a; }
+.ctx-forbidden-fail { color: #e05050; font-weight: 700; }
+.ctx-card-preview {
+  color: #7aa0c0;
+  font-size: 0.73rem;
+  white-space: pre-wrap;
+  border-top: 1px solid #1a3050;
+  padding-top: 4px;
+  margin-top: 3px;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 480px) {
   .hero h1 { font-size: 1.45rem; }

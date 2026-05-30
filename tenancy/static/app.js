@@ -139,6 +139,126 @@ function _renderWebPanel(webEvent, container) {
   (container || resultCard).appendChild(panel);
 }
 
+function _buildAnchorCard(s, anchorMethod) {
+  const num = (s.document_id || '').replace('NZLEG/RTA/', '');
+  const forbidden = s.forbidden_terms || {};
+  const checks = _FORBIDDEN_ANCHOR_TERMS_DISPLAY.map(t => {
+    const found = forbidden[t];
+    return `<span class="${found ? 'ctx-forbidden-fail' : 'ctx-forbidden-ok'}">${escapeHtml(t)}: ${found ? 'YES' : 'no'}</span>`;
+  }).join(' | ');
+  const card = document.createElement('div');
+  card.className = 'ctx-card ctx-card-leg';
+  card.innerHTML = `<div class="ctx-card-header">${escapeHtml(num)} - ${escapeHtml(s.title || '')}</div>
+<div class="ctx-card-meta">legislation | ${escapeHtml(anchorMethod || '')} | ~${s.tokens ?? '?'} tokens | score: n/a</div>
+<div class="ctx-card-forbidden">Forbidden terms: ${checks}</div>
+<div class="ctx-card-preview">${escapeHtml((s.preview || '').slice(0, 400))}</div>`;
+  return card;
+}
+
+function _buildChunkCard(c) {
+  const scoreStr = c.score != null ? c.score.toFixed(4) : 'n/a';
+  const gateMeta = c.passed_gate !== undefined ? ` | gate: ${c.passed_gate ? 'yes' : 'no'}` : '';
+  const card = document.createElement('div');
+  card.className = 'ctx-card ctx-card-case';
+  card.innerHTML = `<div class="ctx-card-header">[S${c.source_index}] ${escapeHtml(c.document_id || '')}</div>
+<div class="ctx-card-meta">case | score: ${escapeHtml(scoreStr)} | date: ${escapeHtml(c.date || '?')} | ~${c.tokens ?? '?'} tokens${escapeHtml(gateMeta)}</div>
+<div class="ctx-card-preview">${escapeHtml((c.preview || '').slice(0, 400))}</div>`;
+  return card;
+}
+
+function _renderContextDebugPanel(ev, container) {
+  const existing = (container || resultCard).querySelector('.context-debug-panel');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('details');
+  panel.className = 'context-debug-panel';
+
+  const summary = document.createElement('summary');
+  summary.className = 'context-debug-toggle';
+  summary.textContent = 'Context sent to model';
+  panel.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'context-debug-body';
+
+  // Query + planner block
+  const pl = ev.planner || {};
+  const rewriteChanged = ev.rewritten_query && ev.rewritten_query !== ev.original_query;
+  let qHtml = '<div class="ctx-query-block">';
+  qHtml += `<div class="ctx-query-row"><span class="ctx-label">Original query</span><span class="ctx-query-text">${escapeHtml(ev.original_query || '')}</span></div>`;
+  if (ev.rewritten_query !== undefined) {
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Rewritten query</span><span class="ctx-query-text${rewriteChanged ? ' ctx-rewrite-changed' : ''}">${escapeHtml(ev.rewritten_query || ev.original_query || '')}</span></div>`;
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Rewrite used</span><span class="ctx-meta-val">${ev.rewrite_used ? 'yes' : 'no'}</span></div>`;
+  }
+  if (pl.property_change_triggered) {
+    const sections = (pl.forced_sections || []).map(s => s.replace('NZLEG/RTA/', '')).join(', ');
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Property-change gate</span><span class="ctx-meta-val ctx-gate-yes">triggered | terms: ${escapeHtml((pl.trigger_terms || []).join(', '))} | forced: ${escapeHtml(sections)}</span></div>`;
+  }
+  qHtml += '</div>';
+  body.innerHTML = qHtml;
+
+  // Anchor cards
+  const anchor = ev.anchor || {};
+  if (anchor.sections && anchor.sections.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'ctx-section-label';
+    lbl.textContent = `RTA anchor - ${anchor.method || 'unknown'} (legislation, not [SN] cited)`;
+    body.appendChild(lbl);
+    anchor.sections.forEach(s => body.appendChild(_buildAnchorCard(s, anchor.method)));
+  }
+
+  // Chunk cards
+  const chunks = ev.chunks || [];
+  if (chunks.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'ctx-section-label';
+    lbl.textContent = `Case chunks (${chunks.length}) - [SN] matches prompt`;
+    body.appendChild(lbl);
+    chunks.forEach(c => body.appendChild(_buildChunkCard(c)));
+  }
+
+  panel.appendChild(body);
+  (container || resultCard).appendChild(panel);
+}
+
+function _renderSharedContextDebugPanel(ev, container) {
+  const existing = container.querySelector('.shared-context-debug-panel');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('details');
+  panel.className = 'context-debug-panel shared-context-debug-panel';
+
+  const summary = document.createElement('summary');
+  summary.className = 'context-debug-toggle';
+  summary.textContent = 'Shared context (all strategies)';
+  panel.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'context-debug-body';
+
+  const pl = ev.planner || {};
+  let qHtml = '<div class="ctx-query-block">';
+  qHtml += `<div class="ctx-query-row"><span class="ctx-label">Original query</span><span class="ctx-query-text">${escapeHtml(ev.original_query || '')}</span></div>`;
+  if (pl.property_change_triggered) {
+    const sections = (pl.forced_sections || []).map(s => s.replace('NZLEG/RTA/', '')).join(', ');
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Property-change gate</span><span class="ctx-meta-val ctx-gate-yes">triggered | terms: ${escapeHtml((pl.trigger_terms || []).join(', '))} | forced: ${escapeHtml(sections)}</span></div>`;
+  }
+  qHtml += '</div>';
+  body.innerHTML = qHtml;
+
+  const anchor = ev.anchor || {};
+  if (anchor.sections && anchor.sections.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'ctx-section-label';
+    lbl.textContent = `RTA anchor - ${anchor.method || 'unknown'} (shared, not [SN] cited)`;
+    body.appendChild(lbl);
+    anchor.sections.forEach(s => body.appendChild(_buildAnchorCard(s, anchor.method)));
+  }
+
+  panel.appendChild(body);
+  container.appendChild(panel);
+}
+
 let _apiToken = '';
 
 async function _loadToken() {
@@ -186,6 +306,12 @@ let currentQuestion = '';
 let currentRating = null;
 let _debugInfo = null;
 let _webResultsInfo = null;
+let _sharedContextDebugInfo = null;
+
+// Terms shown in anchor forbidden-term checklist (must match backend _FORBIDDEN_ANCHOR_TERMS).
+const _FORBIDDEN_ANCHOR_TERMS_DISPLAY = [
+  'Schedule 1A', 'infringement fee', '42A(7)', '19(2)', 'penalty notice',
+];
 
 // ---- Character counter ----
 questionEl.addEventListener('input', () => {
@@ -487,6 +613,8 @@ function resetToForm() {
   if (wp) wp.remove();
   const dp = document.getElementById('debug-panel');
   if (dp) dp.remove();
+  resultCard.querySelectorAll('.context-debug-panel').forEach(p => p.remove());
+  compareGrid.querySelectorAll('.context-debug-panel').forEach(p => p.remove());
   questionEl.value = '';
   charCountEl.textContent = '0';
   questionEl.focus();
@@ -680,6 +808,26 @@ function _colSetScores(strategy, dbg) {
       const cls = isBm25 ? 'mid' : (s >= 0.80 ? 'high' : s >= 0.76 ? 'mid' : 'low');
       return `<div class="compare-score-row"><span class="compare-score-label">S${i+1}</span><div class="compare-score-bar-wrap"><div class="debug-score-bar ${cls}" style="width:${pct}%"></div></div><span class="compare-score-val">${isBm25 ? s.toFixed(5) : s.toFixed(4)}</span></div>`;
     }).join('') + `<div class="compare-score-stat">${dbg.retrieve_ms}ms retrieve</div>`;
+
+  if (dbg.chunk_cards && dbg.chunk_cards.length) {
+    const existing = col.querySelector('.context-debug-panel');
+    if (existing) existing.remove();
+    const miniPanel = document.createElement('details');
+    miniPanel.className = 'context-debug-panel';
+    const sum = document.createElement('summary');
+    sum.className = 'context-debug-toggle';
+    sum.textContent = `Case chunks (${dbg.chunk_cards.length})`;
+    miniPanel.appendChild(sum);
+    const body = document.createElement('div');
+    body.className = 'context-debug-body';
+    const lbl = document.createElement('div');
+    lbl.className = 'ctx-section-label';
+    lbl.textContent = '[SN] matches prompt';
+    body.appendChild(lbl);
+    dbg.chunk_cards.forEach(c => body.appendChild(_buildChunkCard(c)));
+    miniPanel.appendChild(body);
+    col.querySelector('.compare-col-scores').after(miniPanel);
+  }
 }
 
 function _colSetError(strategy, msg) {
@@ -695,6 +843,7 @@ async function _submitCompare(question, strategies) {
   submitBtn.disabled = true;
   _debugInfo = null;
   _webResultsInfo = null;
+  _sharedContextDebugInfo = null;
   _buildCompareColumns(strategies);
   askAnotherRow.classList.remove('visible');
 
@@ -759,10 +908,13 @@ async function _submitCompare(question, strategies) {
           _colFinalise(s);
         } else if (ev.type === 'col_error') {
           _colSetError(s, ev.message);
+        } else if (ev.type === 'shared_context_debug') {
+          _sharedContextDebugInfo = ev;
         } else if (ev.type === 'web_results') {
           _webResultsInfo = ev;
         } else if (ev.type === 'all_done') {
           if (_webResultsInfo) _renderWebPanel(_webResultsInfo, compareGrid);
+          if (_sharedContextDebugInfo) _renderSharedContextDebugPanel(_sharedContextDebugInfo, compareGrid);
           askAnotherRow.classList.add('visible');
         }
       }
@@ -795,6 +947,7 @@ form.addEventListener('submit', async (e) => {
   showLoading();
   _debugInfo = null;
   _webResultsInfo = null;
+  _sharedContextDebugInfo = null;
 
   let res;
   try {
@@ -864,6 +1017,8 @@ form.addEventListener('submit', async (e) => {
           _debugInfo = event;
         } else if (event.type === 'debug_done') {
           if (_debugInfo) _renderDebugPanel(_debugInfo, event);
+        } else if (event.type === 'context_debug') {
+          _renderContextDebugPanel(event, resultCard);
         } else if (event.type === 'token') {
           if (!streamingStarted) {
             streamingStarted = true;

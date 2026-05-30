@@ -380,6 +380,57 @@ async def _fetch_rta_cached() -> str | None:
 # Used to truncate extraction before bleeding into adjacent sections.
 _NEXT_SECTION_RE = re.compile(r"(?m)^\s*(?:\d+[A-Z]*\s+[A-Z]|Schedule\b|---)")
 
+# Terms that must never appear in a live RTA anchor excerpt (penalty-table leakage).
+_FORBIDDEN_ANCHOR_TERMS = [
+    "Schedule 1A", "infringement fee", "42A(7)", "19(2)",
+    "penalty notice", "unlawful acts and penalties",
+]
+
+
+def _anchor_debug_cards(
+    leg_sources: list[dict], anchor_method: str, live_text: str | None
+) -> list[dict]:
+    """Build debug metadata cards for each legislation anchor section."""
+    cards = []
+    for s in leg_sources:
+        doc_id = s.get("case_id", "")
+        m = re.search(r'/s?(\d+[A-Z]?)$', doc_id, re.IGNORECASE)
+        full_excerpt = (_extract_rta_section(live_text, m.group(1).upper()) or "") if (m and live_text) else ""
+        forbidden = {t: (t.lower() in full_excerpt.lower()) for t in _FORBIDDEN_ANCHOR_TERMS}
+        cards.append({
+            "document_id": doc_id,
+            "title": s.get("title", ""),
+            "url": s.get("url", ""),
+            "anchor_method": anchor_method,
+            "tokens": len(full_excerpt) // 4,
+            "preview": full_excerpt[:400],
+            "forbidden_terms": forbidden,
+        })
+    return cards
+
+
+def _chunk_debug_cards(
+    context_texts: list[str], sources: list[dict], prop_change_triggered: bool
+) -> list[dict]:
+    """Build debug metadata cards for case chunk context."""
+    cards = []
+    for i, (text, src) in enumerate(zip(context_texts, sources)):
+        sent = text[:1500]  # matches generator truncation
+        card: dict = {
+            "source_index": i + 1,
+            "document_id": src.get("case_id", ""),
+            "title": src.get("title", ""),
+            "court": src.get("court_name", ""),
+            "date": src.get("date", ""),
+            "score": src.get("_score"),
+            "tokens": len(sent) // 4,
+            "preview": text[:400],
+        }
+        if prop_change_triggered:
+            card["passed_gate"] = True
+        cards.append(card)
+    return cards
+
 
 def _extract_rta_section(full_text: str, num: str) -> str | None:
     """Return the substantive text of RTA section `num` from the full page text.
@@ -742,6 +793,10 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
             if debug_mode:
                 yield f"data: {json.dumps({'type': 'debug', 'strategy': strategy, 'retrieve_ms': round(t_retrieve * 1000), 'scores': scores, 'top': max(scores), 'min': min(scores), 'avg': round(sum(scores) / len(scores), 4), 'chunks': len(scores)})}\n\n"
+                prop_change = _detect_prop_change(retrieval_question)
+                trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in retrieval_question.lower()][:6] if prop_change else []
+                anchor_method = "live_heading_aware" if (live_text and leg_sources) else ("vector_store" if leg_sources else "none")
+                yield f"data: {json.dumps({'type': 'context_debug', 'original_query': question, 'rewritten_query': retrieval_question, 'rewrite_used': retrieval_question.strip() != question.strip(), 'planner': {'property_change_triggered': prop_change, 'trigger_terms': trigger_terms, 'forced_sections': sorted(_PROP_CHANGE_DESIRED_SECTIONS) if prop_change else []}, 'anchor': {'method': anchor_method, 'sections': _anchor_debug_cards(leg_sources, anchor_method, live_text)}, 'chunks': _chunk_debug_cards(context_texts, sources, prop_change)})}\n\n"
 
             gen_question = question + _IRAC_SUFFIX if req.irac else question
             t_gen = time.monotonic()
@@ -801,6 +856,17 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
         # Shared RTA anchor + leg_sources for web verify (same question, run once)
         shared_anchor, shared_leg_sources = await _retrieve_rta_anchor(question)
 
+        # Emit shared context debug (query + anchor info, shared across all strategy columns)
+        _live_text_cmp = (
+            _rta_page_cache[0]
+            if _rta_page_cache and time.monotonic() - _rta_page_cache[1] < _RTA_CACHE_TTL
+            else None
+        )
+        _cmp_prop_change = _detect_prop_change(question)
+        _cmp_trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in question.lower()][:6] if _cmp_prop_change else []
+        _cmp_anchor_method = "live_heading_aware" if (_live_text_cmp and shared_leg_sources) else ("vector_store" if shared_leg_sources else "none")
+        yield f"data: {json.dumps({'type': 'shared_context_debug', 'original_query': question, 'planner': {'property_change_triggered': _cmp_prop_change, 'trigger_terms': _cmp_trigger_terms, 'forced_sections': sorted(_PROP_CHANGE_DESIRED_SECTIONS) if _cmp_prop_change else []}, 'anchor': {'method': _cmp_anchor_method, 'sections': _anchor_debug_cards(shared_leg_sources, _cmp_anchor_method, _live_text_cmp)}})}\n\n"
+
         async def _run_strategy(strat: str, col_idx: int) -> None:
             t0 = time.monotonic()
             await queue.put({"type": "col_start", "strategy": strat, "col": col_idx})
@@ -829,7 +895,7 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
             public_sources = [{k: v for k, v in s.items() if k not in ("title", "_score")} for s in sources]
             scores = [s["_score"] for s in sources]
             await queue.put({"type": "col_sources", "strategy": strat, "sources": public_sources, "legislation": shared_leg_sources})
-            await queue.put({"type": "col_debug", "strategy": strat, "retrieve_ms": round(t_retrieve * 1000), "scores": scores, "top": max(scores), "min": min(scores), "avg": round(sum(scores) / len(scores), 4), "chunks": len(scores)})
+            await queue.put({"type": "col_debug", "strategy": strat, "retrieve_ms": round(t_retrieve * 1000), "scores": scores, "top": max(scores), "min": min(scores), "avg": round(sum(scores) / len(scores), 4), "chunks": len(scores), "chunk_cards": _chunk_debug_cards(context_texts, sources, _detect_prop_change(question))})
             in_think = False
             think_parts: list[str] = []
             t_gen = time.monotonic()
