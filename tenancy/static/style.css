@@ -1060,6 +1060,23 @@ footer .footer-copyright { margin-top: 6px; opacity: 0.75; }
   overflow-y: auto;
 }
 
+/* ---- Citation links in answer ---- */
+.citation-link {
+  color: #d4a830;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.citation-link:hover { text-decoration: underline; color: #f0c050; }
+.citation-highlight {
+  outline: 3px solid #f59e0b;
+  box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.18);
+  border-radius: 6px;
+  transition: outline 0.1s, box-shadow 0.1s;
+}
+
 /* ---- Context debug panel ---- */
 .context-debug-panel {
   background: #0d1b2a;
@@ -1148,6 +1165,37 @@ footer .footer-copyright { margin-top: 6px; opacity: 0.75; }
   padding-top: 4px;
   margin-top: 3px;
 }
+.ctx-expand-btn {
+  background: none;
+  border: 1px solid #2a4a6a;
+  color: #5a90c0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.71rem;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.ctx-expand-btn:hover { background: #1a3050; }
+.ctx-budget {
+  background: #0a1520;
+  border: 1px solid #1a3050;
+  border-radius: 6px;
+  padding: 7px 10px;
+  margin-bottom: 10px;
+}
+.ctx-budget-bar-wrap {
+  height: 5px;
+  background: #1a3050;
+  border-radius: 3px;
+  margin-bottom: 5px;
+  overflow: hidden;
+}
+.ctx-budget-bar { height: 100%; border-radius: 3px; }
+.ctx-budget-bar.ctx-budget-low  { background: #2ecc71; }
+.ctx-budget-bar.ctx-budget-mid  { background: #d4a830; }
+.ctx-budget-bar.ctx-budget-high { background: #e74c3c; }
+.ctx-budget-label { color: #c0d8e8; font-size: 0.76rem; }
+.ctx-budget-detail { color: #5a7a9a; font-size: 0.72rem; margin-top: 2px; }
 
 /* ---- Responsive ---- */
 @media (max-width: 480px) {

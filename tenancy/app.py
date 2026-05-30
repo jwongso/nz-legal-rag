@@ -284,16 +284,24 @@ def _prop_change_chunk_relevant(text: str) -> bool:
 
 def _filter_prop_change_chunks(
     context_texts: list[str], sources: list[dict]
-) -> tuple[list[str], list[dict]]:
-    """Keep only chunks that mention garden/land AND alteration/consent. Falls back to
-    original list if the filter would remove everything."""
-    pairs = [
-        (t, s) for t, s in zip(context_texts, sources)
-        if _prop_change_chunk_relevant(t)
-    ]
+) -> tuple[list[str], list[dict], dict]:
+    """Keep only chunks that mention garden/land AND alteration/consent.
+
+    Returns (filtered_texts, filtered_sources, gate_stats). Falls back to the
+    original lists if the filter would remove everything (gate_stats.fallback_used=True).
+    """
+    before = len(context_texts)
+    pairs = [(t, s) for t, s in zip(context_texts, sources) if _prop_change_chunk_relevant(t)]
     if not pairs:
-        return context_texts, sources
-    return [p[0] for p in pairs], [p[1] for p in pairs]
+        return context_texts, sources, {
+            "candidates_before": before, "survived": before,
+            "fallback_used": True, "rejected": [],
+        }
+    rejected = [s.get("case_id", "") for t, s in zip(context_texts, sources) if not _prop_change_chunk_relevant(t)]
+    return [p[0] for p in pairs], [p[1] for p in pairs], {
+        "candidates_before": before, "survived": len(pairs),
+        "fallback_used": False, "rejected": rejected[:6],
+    }
 
 
 def _web_cache_key(leg_sources: list[dict], fallback: str) -> str:
@@ -380,6 +388,9 @@ async def _fetch_rta_cached() -> str | None:
 # Used to truncate extraction before bleeding into adjacent sections.
 _NEXT_SECTION_RE = re.compile(r"(?m)^\s*(?:\d+[A-Z]*\s+[A-Z]|Schedule\b|---)")
 
+# llama-server --ctx-size value (tokens). Shown in context budget meter.
+_LLM_CTX_TOKENS = 5120
+
 # Terms that must never appear in a live RTA anchor excerpt (penalty-table leakage).
 _FORBIDDEN_ANCHOR_TERMS = [
     "Schedule 1A", "infringement fee", "42A(7)", "19(2)",
@@ -412,7 +423,11 @@ def _anchor_debug_cards(
 def _chunk_debug_cards(
     context_texts: list[str], sources: list[dict], prop_change_triggered: bool
 ) -> list[dict]:
-    """Build debug metadata cards for case chunk context."""
+    """Build debug metadata cards for case chunk context.
+
+    Includes full_text (exact text sent to model, up to 1500 chars) so the
+    frontend can offer progressive disclosure without a round-trip.
+    """
     cards = []
     for i, (text, src) in enumerate(zip(context_texts, sources)):
         sent = text[:1500]  # matches generator truncation
@@ -424,7 +439,8 @@ def _chunk_debug_cards(
             "date": src.get("date", ""),
             "score": src.get("_score"),
             "tokens": len(sent) // 4,
-            "preview": text[:400],
+            "preview": text[:300],
+            "full_text": sent,
         }
         if prop_change_triggered:
             card["passed_gate"] = True
@@ -760,8 +776,9 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
             )
             t_retrieve = time.monotonic() - t0
 
+            gate_stats: dict = {}
             if _detect_prop_change(retrieval_question):
-                context_texts, sources = _filter_prop_change_chunks(context_texts, sources)
+                context_texts, sources, gate_stats = _filter_prop_change_chunks(context_texts, sources)
 
             web_text, web_results, from_cache = "", [], False
             if req.verify:
@@ -793,10 +810,38 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
             if debug_mode:
                 yield f"data: {json.dumps({'type': 'debug', 'strategy': strategy, 'retrieve_ms': round(t_retrieve * 1000), 'scores': scores, 'top': max(scores), 'min': min(scores), 'avg': round(sum(scores) / len(scores), 4), 'chunks': len(scores)})}\n\n"
-                prop_change = _detect_prop_change(retrieval_question)
+                prop_change = bool(gate_stats)
                 trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in retrieval_question.lower()][:6] if prop_change else []
                 anchor_method = "live_heading_aware" if (live_text and leg_sources) else ("vector_store" if leg_sources else "none")
-                yield f"data: {json.dumps({'type': 'context_debug', 'original_query': question, 'rewritten_query': retrieval_question, 'rewrite_used': retrieval_question.strip() != question.strip(), 'planner': {'property_change_triggered': prop_change, 'trigger_terms': trigger_terms, 'forced_sections': sorted(_PROP_CHANGE_DESIRED_SECTIONS) if prop_change else []}, 'anchor': {'method': anchor_method, 'sections': _anchor_debug_cards(leg_sources, anchor_method, live_text)}, 'chunks': _chunk_debug_cards(context_texts, sources, prop_change)})}\n\n"
+                chunk_cards = _chunk_debug_cards(context_texts, sources, prop_change)
+                anchor_cards = _anchor_debug_cards(leg_sources, anchor_method, live_text)
+                anchor_tokens = sum(c["tokens"] for c in anchor_cards)
+                chunk_tokens = sum(c["tokens"] for c in chunk_cards)
+                truncated = sum(1 for t in context_texts if len(t) > 1500)
+                ctx_debug_payload = {
+                    "type": "context_debug",
+                    "original_query": question,
+                    "rewritten_query": retrieval_question,
+                    "rewrite_used": retrieval_question.strip() != question.strip(),
+                    "planner": {
+                        "property_change_triggered": prop_change,
+                        "trigger_terms": trigger_terms,
+                        "forced_sections": sorted(_PROP_CHANGE_DESIRED_SECTIONS) if prop_change else [],
+                        "gate": gate_stats if prop_change else None,
+                    },
+                    "anchor": {"method": anchor_method, "sections": anchor_cards},
+                    "chunks": chunk_cards,
+                    "budget": {
+                        "total_tokens": anchor_tokens + chunk_tokens,
+                        "ctx_limit": _LLM_CTX_TOKENS,
+                        "anchor_tokens": anchor_tokens,
+                        "chunk_tokens": chunk_tokens,
+                        "sources_sent": len(context_texts),
+                        "leg_sections": len(leg_sources),
+                        "truncated_chunks": truncated,
+                    },
+                }
+                yield f"data: {json.dumps(ctx_debug_payload)}\n\n"
 
             gen_question = question + _IRAC_SUFFIX if req.irac else question
             t_gen = time.monotonic()
@@ -865,7 +910,7 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
         _cmp_prop_change = _detect_prop_change(question)
         _cmp_trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in question.lower()][:6] if _cmp_prop_change else []
         _cmp_anchor_method = "live_heading_aware" if (_live_text_cmp and shared_leg_sources) else ("vector_store" if shared_leg_sources else "none")
-        yield f"data: {json.dumps({'type': 'shared_context_debug', 'original_query': question, 'planner': {'property_change_triggered': _cmp_prop_change, 'trigger_terms': _cmp_trigger_terms, 'forced_sections': sorted(_PROP_CHANGE_DESIRED_SECTIONS) if _cmp_prop_change else []}, 'anchor': {'method': _cmp_anchor_method, 'sections': _anchor_debug_cards(shared_leg_sources, _cmp_anchor_method, _live_text_cmp)}})}\n\n"
+        yield f"data: {json.dumps({'type': 'shared_context_debug', 'original_query': question, 'rewrite_mode': 'disabled_in_compare', 'planner': {'property_change_triggered': _cmp_prop_change, 'trigger_terms': _cmp_trigger_terms, 'forced_sections': sorted(_PROP_CHANGE_DESIRED_SECTIONS) if _cmp_prop_change else []}, 'anchor': {'method': _cmp_anchor_method, 'sections': _anchor_debug_cards(shared_leg_sources, _cmp_anchor_method, _live_text_cmp)}})}\n\n"
 
         async def _run_strategy(strat: str, col_idx: int) -> None:
             t0 = time.monotonic()
@@ -886,7 +931,7 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
             t_retrieve = time.monotonic() - t0
 
             if _detect_prop_change(question):
-                context_texts, sources = _filter_prop_change_chunks(context_texts, sources)
+                context_texts, sources, _ = _filter_prop_change_chunks(context_texts, sources)
 
             if not context_texts:
                 await queue.put({"type": "col_error", "strategy": strat, "message": "No relevant decisions found for this strategy."})

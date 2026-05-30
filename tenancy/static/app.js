@@ -158,12 +158,69 @@ function _buildAnchorCard(s, anchorMethod) {
 function _buildChunkCard(c) {
   const scoreStr = c.score != null ? c.score.toFixed(4) : 'n/a';
   const gateMeta = c.passed_gate !== undefined ? ` | gate: ${c.passed_gate ? 'yes' : 'no'}` : '';
+  const preview = (c.preview || '').slice(0, 300);
+  const fullText = c.full_text || preview;
+  const hasMore = fullText.length > preview.length;
   const card = document.createElement('div');
   card.className = 'ctx-card ctx-card-case';
+  card.id = `ctx-S${c.source_index}`;
   card.innerHTML = `<div class="ctx-card-header">[S${c.source_index}] ${escapeHtml(c.document_id || '')}</div>
 <div class="ctx-card-meta">case | score: ${escapeHtml(scoreStr)} | date: ${escapeHtml(c.date || '?')} | ~${c.tokens ?? '?'} tokens${escapeHtml(gateMeta)}</div>
-<div class="ctx-card-preview">${escapeHtml((c.preview || '').slice(0, 400))}</div>`;
+<div class="ctx-card-preview">${escapeHtml(preview)}</div>
+${hasMore ? `<button class="ctx-expand-btn">Show full chunk</button>` : ''}`;
+  if (hasMore) {
+    const btn = card.querySelector('.ctx-expand-btn');
+    btn.dataset.full = fullText;
+    btn.dataset.preview = preview;
+  }
   return card;
+}
+
+// ---- Delegated: citation link -> scroll + highlight matching context card ----
+document.addEventListener('click', e => {
+  const link = e.target.closest('.citation-link');
+  if (!link) return;
+  e.preventDefault();
+  const src = link.dataset.source;
+  // Scope search to the same column in compare mode, fall back to whole document.
+  const scope = link.closest('.compare-col') || document;
+  const card = scope.querySelector(`#ctx-${CSS.escape(src)}`);
+  if (!card) return;
+  // Open parent <details> if collapsed.
+  const det = card.closest('details');
+  if (det && !det.open) det.open = true;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.remove('citation-highlight');
+  void card.offsetWidth; // force reflow to restart transition
+  card.classList.add('citation-highlight');
+  setTimeout(() => card.classList.remove('citation-highlight'), 2500);
+});
+
+// ---- Delegated: expand/collapse full chunk text ----
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.ctx-expand-btn');
+  if (!btn) return;
+  const preview = btn.previousElementSibling;
+  if (!preview) return;
+  const expanded = btn.dataset.expanded === 'true';
+  preview.textContent = expanded ? btn.dataset.preview : btn.dataset.full;
+  btn.dataset.expanded = expanded ? 'false' : 'true';
+  btn.textContent = expanded ? 'Show full chunk' : 'Collapse';
+});
+
+function _buildBudgetMeter(budget) {
+  if (!budget) return null;
+  const pct = Math.min(100, Math.round((budget.total_tokens / budget.ctx_limit) * 100));
+  const cls = pct >= 80 ? 'ctx-budget-high' : pct >= 50 ? 'ctx-budget-mid' : 'ctx-budget-low';
+  const truncNote = budget.truncated_chunks > 0 ? ` | truncated: ${budget.truncated_chunks}` : '';
+  const wrap = document.createElement('div');
+  wrap.className = 'ctx-budget';
+  wrap.innerHTML = `<div class="ctx-budget-bar-wrap"><div class="ctx-budget-bar ${cls}" data-pct="${pct}"></div></div>
+<div class="ctx-budget-label">Context: ${budget.total_tokens.toLocaleString()} / ${budget.ctx_limit.toLocaleString()} tokens (~${pct}%)</div>
+<div class="ctx-budget-detail">Anchor: ~${budget.anchor_tokens} tk | Chunks: ~${budget.chunk_tokens} tk | Sources: ${budget.sources_sent}${escapeHtml(truncNote)}</div>`;
+  const bar = wrap.querySelector('.ctx-budget-bar[data-pct]');
+  if (bar) bar.style.width = pct + '%';
+  return wrap;
 }
 
 function _renderContextDebugPanel(ev, container) {
@@ -181,6 +238,10 @@ function _renderContextDebugPanel(ev, container) {
   const body = document.createElement('div');
   body.className = 'context-debug-body';
 
+  // Budget meter
+  const budgetEl = _buildBudgetMeter(ev.budget);
+  if (budgetEl) body.appendChild(budgetEl);
+
   // Query + planner block
   const pl = ev.planner || {};
   const rewriteChanged = ev.rewritten_query && ev.rewritten_query !== ev.original_query;
@@ -188,14 +249,20 @@ function _renderContextDebugPanel(ev, container) {
   qHtml += `<div class="ctx-query-row"><span class="ctx-label">Original query</span><span class="ctx-query-text">${escapeHtml(ev.original_query || '')}</span></div>`;
   if (ev.rewritten_query !== undefined) {
     qHtml += `<div class="ctx-query-row"><span class="ctx-label">Rewritten query</span><span class="ctx-query-text${rewriteChanged ? ' ctx-rewrite-changed' : ''}">${escapeHtml(ev.rewritten_query || ev.original_query || '')}</span></div>`;
-    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Rewrite used</span><span class="ctx-meta-val">${ev.rewrite_used ? 'yes' : 'no'}</span></div>`;
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Rewrite</span><span class="ctx-meta-val">${ev.rewrite_used ? 'yes' : 'no'}</span></div>`;
   }
   if (pl.property_change_triggered) {
     const sections = (pl.forced_sections || []).map(s => s.replace('NZLEG/RTA/', '')).join(', ');
-    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Property-change gate</span><span class="ctx-meta-val ctx-gate-yes">triggered | terms: ${escapeHtml((pl.trigger_terms || []).join(', '))} | forced: ${escapeHtml(sections)}</span></div>`;
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Prop-change gate</span><span class="ctx-meta-val ctx-gate-yes">triggered | terms: ${escapeHtml((pl.trigger_terms || []).join(', '))} | forced: ${escapeHtml(sections)}</span></div>`;
+    const gate = pl.gate || {};
+    const fallbackNote = gate.fallback_used ? ' | FALLBACK: all filtered, using original' : '';
+    const rejectedNote = gate.rejected && gate.rejected.length ? ` | rejected: ${escapeHtml(gate.rejected.join(', '))}` : '';
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Gate filter</span><span class="ctx-meta-val">before: ${gate.candidates_before ?? '?'} | survived: ${gate.survived ?? '?'}${escapeHtml(fallbackNote)}${rejectedNote}</span></div>`;
   }
   qHtml += '</div>';
-  body.innerHTML = qHtml;
+  const qBlock = document.createElement('div');
+  qBlock.innerHTML = qHtml;
+  body.appendChild(qBlock.firstElementChild);
 
   // Anchor cards
   const anchor = ev.anchor || {};
@@ -212,7 +279,7 @@ function _renderContextDebugPanel(ev, container) {
   if (chunks.length) {
     const lbl = document.createElement('div');
     lbl.className = 'ctx-section-label';
-    lbl.textContent = `Case chunks (${chunks.length}) - [SN] matches prompt`;
+    lbl.textContent = `Case chunks (${chunks.length}) - click [SN] in answer to jump here`;
     body.appendChild(lbl);
     chunks.forEach(c => body.appendChild(_buildChunkCard(c)));
   }
@@ -239,12 +306,15 @@ function _renderSharedContextDebugPanel(ev, container) {
   const pl = ev.planner || {};
   let qHtml = '<div class="ctx-query-block">';
   qHtml += `<div class="ctx-query-row"><span class="ctx-label">Original query</span><span class="ctx-query-text">${escapeHtml(ev.original_query || '')}</span></div>`;
+  qHtml += `<div class="ctx-query-row"><span class="ctx-label">Rewrite</span><span class="ctx-meta-val">disabled in compare mode - all strategies use the raw query</span></div>`;
   if (pl.property_change_triggered) {
     const sections = (pl.forced_sections || []).map(s => s.replace('NZLEG/RTA/', '')).join(', ');
-    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Property-change gate</span><span class="ctx-meta-val ctx-gate-yes">triggered | terms: ${escapeHtml((pl.trigger_terms || []).join(', '))} | forced: ${escapeHtml(sections)}</span></div>`;
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Prop-change gate</span><span class="ctx-meta-val ctx-gate-yes">triggered | terms: ${escapeHtml((pl.trigger_terms || []).join(', '))} | forced: ${escapeHtml(sections)}</span></div>`;
   }
   qHtml += '</div>';
-  body.innerHTML = qHtml;
+  const qBlock = document.createElement('div');
+  qBlock.innerHTML = qHtml;
+  body.appendChild(qBlock.firstElementChild);
 
   const anchor = ev.anchor || {};
   if (anchor.sections && anchor.sections.length) {
@@ -395,7 +465,7 @@ function renderAnswer(text) {
 
   // Apply inline formatting after structure is built
   return html
-    .replace(/\[S(\d+)\]/g, '<span class="citation">[S$1]</span>')
+    .replace(/\[S(\d+)\]/g, '<a href="#ctx-S$1" class="citation-link" data-source="S$1">[S$1]</a>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
