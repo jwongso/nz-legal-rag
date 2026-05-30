@@ -23,6 +23,28 @@ pipeline, corpus ingestion, and evaluation harness see the root `README.md`.
 
 ---
 
+## Quality gates
+
+Every production change must pass these checks before deployment:
+
+| Gate | Target |
+|---|---:|
+| Retrieval H@5(r) | >= 0.95 |
+| Correct RTA section retrieval | required for all statute/property-change tests |
+| Forbidden anchor text | 0 occurrences of Schedule 1A / penalty-table rows |
+| Citation source validity | 100% of citations point to retrieved context |
+| Spurious citation rate | 0 |
+| No-context refusal accuracy | 100% justified (no hallucinated answer when sources are absent) |
+| p95 retrieval latency | tracked per release |
+| p95 full answer latency | tracked per release |
+
+Regression tests live in `benchmarks/datasets/retrieval_gold.jsonl`. Each entry
+specifies expected legislation sections, acceptable case documents, and forbidden
+context strings. New regression cases should be added whenever a retrieval bug
+is diagnosed and fixed.
+
+---
+
 ## Architecture
 
 ```
