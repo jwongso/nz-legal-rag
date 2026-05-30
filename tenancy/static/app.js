@@ -379,6 +379,8 @@ let currentRating = null;
 let _debugInfo = null;
 let _webResultsInfo = null;
 let _sharedContextDebugInfo = null;
+let _artifact = {};
+let _colArtifacts = {};
 
 // Terms shown in anchor forbidden-term checklist (must match backend _FORBIDDEN_ANCHOR_TERMS).
 const _FORBIDDEN_ANCHOR_TERMS_DISPLAY = [
@@ -581,6 +583,40 @@ async function fetchLegislationCases(sectionNum, badgeEl) {
   }
 }
 
+// ---- Artifact accumulator ----
+function _resetArtifact(question, strategy) {
+  _artifact = {
+    question,
+    strategy,
+    irac: document.getElementById('irac-toggle').checked,
+    think: _debugMode && document.getElementById('think-toggle').checked,
+    debug_mode: _debugMode,
+    ts_start: new Date().toISOString(),
+    ts_end: null,
+    user_agent: navigator.userAgent,
+    viewport: { w: window.innerWidth, h: window.innerHeight },
+    answer: '',
+    sources: [],
+    legislation: [],
+    confidence: null,
+    web_results: null,
+    verification: null,
+    debug: null,
+    debug_timing: null,
+    context_debug: null,
+  };
+}
+
+async function _saveFullFeedback(payload, rating, comment) {
+  try {
+    await fetch('/feedback/full', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
+      body: JSON.stringify({ ...payload, rating, comment: comment || '' }),
+    });
+  } catch (_) {}
+}
+
 // ---- Feedback ----
 function resetFeedback() {
   currentRating = null;
@@ -592,9 +628,8 @@ function resetFeedback() {
   document.getElementById('feedback-row').style.display = 'flex';
 }
 
-async function submitFeedback(rating) {
+function submitFeedback(rating) {
   if (currentRating === rating) {
-    // Clicking same button again cancels the selection
     currentRating = null;
     thumbUp.classList.remove('active');
     thumbDown.classList.remove('active');
@@ -605,6 +640,9 @@ async function submitFeedback(rating) {
   thumbUp.classList.toggle('active', rating === 1);
   thumbDown.classList.toggle('active', rating === -1);
   feedbackComment.style.display = 'block';
+  if (rating === -1) {
+    _saveFullFeedback(_artifact, -1, '');
+  }
 }
 
 thumbUp.addEventListener('click', () => submitFeedback(1));
@@ -656,6 +694,8 @@ function showStreamingResult() {
 }
 
 function finaliseResult(fullText, sources, legislation) {
+  _artifact.answer = fullText;
+  _artifact.ts_end = new Date().toISOString();
   answerBody.innerHTML = renderAnswer(fullText);
   renderSources(sources, legislation);
   resetFeedback();
@@ -810,7 +850,10 @@ function _colAddFeedback(col, strategy) {
   }
 
   upBtn.addEventListener('click', () => selectRating(1));
-  downBtn.addEventListener('click', () => selectRating(-1));
+  downBtn.addEventListener('click', () => {
+    selectRating(-1);
+    _saveFullFeedback(_colArtifacts[strategy] || { question: currentQuestion, strategy }, -1, '');
+  });
 
   sendBtn.addEventListener('click', async () => {
     if (rating === null) return;
@@ -916,6 +959,7 @@ async function _submitCompare(question, strategies) {
   _debugInfo = null;
   _webResultsInfo = null;
   _sharedContextDebugInfo = null;
+  _colArtifacts = {};
   _buildCompareColumns(strategies);
   askAnotherRow.classList.remove('visible');
 
@@ -967,23 +1011,55 @@ async function _submitCompare(question, strategies) {
         if (ev.type === 'col_start') {
           _colSetActive(s);
           colAnswers[s] = '';
+          _colArtifacts[s] = {
+            question,
+            strategy: s,
+            irac: document.getElementById('irac-toggle').checked,
+            think: document.getElementById('think-toggle').checked,
+            debug_mode: true,
+            ts_start: new Date().toISOString(),
+            ts_end: null,
+            user_agent: navigator.userAgent,
+            viewport: { w: window.innerWidth, h: window.innerHeight },
+            answer: '',
+            sources: [],
+            legislation: [],
+            confidence: null,
+            web_results: null,
+            verification: null,
+            debug: null,
+            debug_timing: null,
+            context_debug: null,
+          };
         } else if (ev.type === 'col_sources') {
           _colSetSources(s, ev.sources, ev.legislation);
+          if (_colArtifacts[s]) {
+            _colArtifacts[s].sources = ev.sources || [];
+            _colArtifacts[s].legislation = ev.legislation || [];
+          }
         } else if (ev.type === 'col_debug') {
           _colSetScores(s, ev);
+          if (_colArtifacts[s]) _colArtifacts[s].debug = ev;
         } else if (ev.type === 'col_think') {
           _colSetThink(s, ev.text);
         } else if (ev.type === 'col_token') {
           colAnswers[s] = (colAnswers[s] || '') + ev.text;
+          if (_colArtifacts[s]) _colArtifacts[s].answer = colAnswers[s];
           _colAppendToken(s, ev.text);
         } else if (ev.type === 'col_done') {
+          if (_colArtifacts[s]) {
+            _colArtifacts[s].ts_end = new Date().toISOString();
+            _colArtifacts[s].debug_timing = { generate_ms: ev.generate_ms, total_ms: ev.total_ms };
+          }
           _colFinalise(s);
         } else if (ev.type === 'col_error') {
           _colSetError(s, ev.message);
         } else if (ev.type === 'shared_context_debug') {
           _sharedContextDebugInfo = ev;
+          Object.values(_colArtifacts).forEach(a => { a.context_debug = ev; });
         } else if (ev.type === 'web_results') {
           _webResultsInfo = ev;
+          Object.values(_colArtifacts).forEach(a => { a.web_results = ev; });
         } else if (ev.type === 'all_done') {
           if (_webResultsInfo) _renderWebPanel(_webResultsInfo, compareGrid);
           if (_sharedContextDebugInfo) _renderSharedContextDebugPanel(_sharedContextDebugInfo, compareGrid);
@@ -1020,6 +1096,7 @@ form.addEventListener('submit', async (e) => {
   _debugInfo = null;
   _webResultsInfo = null;
   _sharedContextDebugInfo = null;
+  _resetArtifact(question, strategies[0] || 'vector');
 
   let res;
   try {
@@ -1080,16 +1157,23 @@ form.addEventListener('submit', async (e) => {
         if (event.type === 'sources') {
           streamedSources = event.sources;
           streamedLegislation = event.legislation || [];
+          _artifact.sources = event.sources || [];
+          _artifact.legislation = event.legislation || [];
           renderSources(streamedSources, streamedLegislation);
         } else if (event.type === 'confidence') {
+          _artifact.confidence = { level: event.level, message: event.message };
           renderConfidence(event);
         } else if (event.type === 'web_results') {
+          _artifact.web_results = event;
           _webResultsInfo = event;
         } else if (event.type === 'debug') {
+          _artifact.debug = event;
           _debugInfo = event;
         } else if (event.type === 'debug_done') {
+          _artifact.debug_timing = { generate_ms: event.generate_ms, total_ms: event.total_ms };
           if (_debugInfo) _renderDebugPanel(_debugInfo, event);
         } else if (event.type === 'context_debug') {
+          _artifact.context_debug = event;
           _renderContextDebugPanel(event, resultCard);
         } else if (event.type === 'token') {
           if (!streamingStarted) {
@@ -1098,11 +1182,13 @@ form.addEventListener('submit', async (e) => {
             answerBody.textContent = '';
           }
           rawAnswer += event.text;
+          _artifact.answer = rawAnswer;
           answerBody.textContent = rawAnswer;
         } else if (event.type === 'done') {
           finaliseResult(rawAnswer, streamedSources, streamedLegislation);
           if (_webResultsInfo) _renderWebPanel(_webResultsInfo);
         } else if (event.type === 'verification') {
+          _artifact.verification = event.sections || [];
           renderVerification(event.sections);
         } else if (event.type === 'error') {
           showError(event.message || 'An error occurred.');

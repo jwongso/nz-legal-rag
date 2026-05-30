@@ -690,8 +690,10 @@ def _check_token(request: Request) -> None:
 
 
 _FEEDBACK_LOG = Path("data/tenancy_feedback.jsonl")
+_FEEDBACK_FULL_LOG = Path("data/feedback_full.jsonl")
 _FEEDBACK_COOLDOWN_S = 30
 _feedback_last: TTLCache = TTLCache(maxsize=2000, ttl=_FEEDBACK_COOLDOWN_S)
+_feedback_full_last: TTLCache = TTLCache(maxsize=4000, ttl=1)
 
 
 _VALID_STRATEGIES = {"vector", "vector_no_legal", "mmr", "bm25"}
@@ -742,6 +744,29 @@ class FeedbackRequest(BaseModel):
     question: str
     rating: int  # 1 = helpful, -1 = not helpful
     comment: str = ""
+
+
+class FeedbackFullRequest(BaseModel):
+    question: str
+    rating: int
+    comment: str = ""
+    strategy: str = ""
+    irac: bool = False
+    think: bool = False
+    debug_mode: bool = False
+    ts_start: str = ""
+    ts_end: str = ""
+    user_agent: str = ""
+    viewport: dict = {}
+    answer: str = ""
+    sources: list = []
+    legislation: list = []
+    confidence: dict | None = None
+    web_results: dict | None = None
+    verification: list | None = None
+    debug: dict | None = None
+    debug_timing: dict | None = None
+    context_debug: dict | None = None
 
 
 @app.post("/ask")
@@ -1123,5 +1148,43 @@ async def feedback(req: FeedbackRequest, request: Request) -> dict:
     }
     _FEEDBACK_LOG.parent.mkdir(parents=True, exist_ok=True)
     with _FEEDBACK_LOG.open("a") as f:
+        f.write(json.dumps(entry) + "\n")
+    return {"ok": True}
+
+
+@app.post("/feedback/full")
+async def feedback_full(req: FeedbackFullRequest, request: Request) -> dict:
+    _check_token(request)
+    if req.rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="Rating must be 1 or -1.")
+    ip = get_client_ip(request)
+    if ip in _feedback_full_last:
+        raise HTTPException(status_code=429, detail="Duplicate submission.")
+    _feedback_full_last[ip] = 1
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "rating": req.rating,
+        "comment": req.comment[:1000],
+        "strategy": req.strategy,
+        "irac": req.irac,
+        "think": req.think,
+        "debug_mode": req.debug_mode,
+        "ts_start": req.ts_start,
+        "ts_end": req.ts_end,
+        "user_agent": req.user_agent[:300],
+        "viewport": req.viewport,
+        "question": req.question[:500],
+        "answer": req.answer[:12000],
+        "sources": req.sources,
+        "legislation": req.legislation,
+        "confidence": req.confidence,
+        "web_results": req.web_results,
+        "verification": req.verification,
+        "debug": req.debug,
+        "debug_timing": req.debug_timing,
+        "context_debug": req.context_debug,
+    }
+    _FEEDBACK_FULL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with _FEEDBACK_FULL_LOG.open("a") as f:
         f.write(json.dumps(entry) + "\n")
     return {"ok": True}
