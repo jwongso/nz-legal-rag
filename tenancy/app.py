@@ -1100,7 +1100,7 @@ async def retrieve(req: RetrieveRequest, request: Request) -> dict:
 
     retrieval_question = await _rewrite_query(question)
 
-    (context_texts, sources), (anchor_vstore, leg_sources) = await asyncio.gather(
+    (context_texts, sources), (anchor_vstore, leg_sources, _) = await asyncio.gather(
         _pipeline.retrieve(retrieval_question, **retrieve_kwargs),
         _retrieve_rta_anchor(retrieval_question),
     )
