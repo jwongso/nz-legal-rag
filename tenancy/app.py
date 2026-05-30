@@ -376,27 +376,29 @@ async def _fetch_rta_cached() -> str | None:
         return None
 
 
-# Markers that indicate we are inside a penalty schedule, not a substantive section.
-_PENALTY_MARKERS = frozenset({
-    "schedule", "infringement fee", "infringement", "maximum amount",
-    "unlawful acts and penalties", "penalty notice",
-})
+# Detects the start of the next section heading or schedule boundary.
+# Used to truncate extraction before bleeding into adjacent sections.
+_NEXT_SECTION_RE = re.compile(r"(?m)^\s*(?:\d+[A-Z]*\s+[A-Z]|Schedule\b|---)")
 
 
 def _extract_rta_section(full_text: str, num: str) -> str | None:
     """Return the substantive text of RTA section `num` from the full page text.
 
-    Skips occurrences inside Schedule/penalty tables (e.g. "42A(7)   fine amount").
-    A real heading looks like "42A  Consent for tenant's fixtures, etc" - number at
-    line start followed by whitespace + capital letter title.  A penalty row looks
-    like "42A(7)   ..." - number immediately followed by '('.
+    Discriminates real headings from Schedule 1A penalty table rows via the
+    heading regex alone: a real heading has whitespace + capital letter title
+    after the number ("42A  Consent for..."), while penalty rows have a
+    parenthesised sub-number ("42A(7)   ...") which does not match.
+    Extraction stops at the next section heading or schedule boundary so
+    the result never bleeds into adjacent sections or the penalty table.
+    Sections may legitimately cross-reference Schedule 1A inline.
     """
     heading_re = re.compile(rf"(?m)^\s*{re.escape(num)}\s+[A-Z][^\n]{{3,}}")
     for m in heading_re.finditer(full_text):
-        window = full_text[max(0, m.start() - 400): m.start() + 50].lower()
-        if any(marker in window for marker in _PENALTY_MARKERS):
-            continue
         candidate = full_text[m.start(): m.start() + 2500]
+        # Skip past the matched heading itself before searching for the next one.
+        nxt = _NEXT_SECTION_RE.search(candidate, 10)
+        if nxt:
+            candidate = candidate[:nxt.start()]
         if re.search(r"\(\d+\)", candidate):
             return candidate[:1800].strip()
     return None

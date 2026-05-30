@@ -389,6 +389,28 @@ describes something already completed (past tense verbs): (1) the likely legal
 position, and (2) concrete practical next steps to reduce risk. This prevents
 answers that only say "you should have asked permission first."
 
+### Live RTA extraction tests
+
+`tests/test_rta_extractor.py` contains 22 deterministic unit tests for
+`_extract_rta_section()`. No network calls, no Qdrant, no llama-server required.
+
+Run with: `pytest tests/test_rta_extractor.py -v`
+
+| Section | Must contain | Must not contain |
+|---|---|---|
+| s40 | "tenant", "clean" or "responsibilities" | "40(3A)(a)", "40(3A)(b)", penalty amounts |
+| s40 | "land" or "garden" | "1,800", "4,000" |
+| s42A | "consent", "fixture" or "improvement" | "42A(7)   Landlord", "1,500" |
+| s42A | "unreasonably" | Penalty table amounts |
+| s42B | "minor", "change" | "42B(3)", "42B(6)", "1,500" |
+| s48 | "entry" or "enter", "landlord" | "48(5)", "infringement fee" |
+| s48 | "24" or "notice" | Penalty content |
+| All | subsection markers "(1)" | Anything from adjacent sections |
+
+Edge cases covered: nonexistent section returns None, empty text returns None,
+penalty-only text returns None, text without subsection markers returns None,
+result length between 100 and 1800 chars.
+
 ### Regression test
 
 `benchmarks/datasets/retrieval_gold.jsonl` entry `tenancy_planted_trees_backyard`
