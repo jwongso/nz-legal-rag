@@ -9,7 +9,7 @@ from collections import defaultdict
 
 from fastapi import HTTPException, Request
 
-_MAX_CONCURRENT = 3
+_MAX_CONCURRENT = 1
 _MAX_WAIT = 60.0
 _AVG_QUERY_SECONDS = 25
 
