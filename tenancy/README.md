@@ -9,11 +9,43 @@ pipeline, corpus ingestion, and evaluation harness see the root `README.md`.
 
 ---
 
+## Known limitations
+
+- This tool is for information and research support only, not legal advice.
+- Tribunal decisions are fact-specific; the outcome in a cited decision may not
+  apply directly to a different set of facts.
+- The tool only covers residential tenancy law under the RTA 1986. Issues
+  involving employment, immigration, consumer law, or criminal matters are out
+  of scope.
+- Web verify is supplementary. It can fail silently or return generic guidance
+  rather than the specific answer needed.
+- AI-generated answers may be inaccurate, incomplete, or outdated. Always verify
+  with Tenancy Services (0800 836 262) or a Community Law centre before acting.
+- Do not enter private or confidential information into the public demo. Queries
+  are logged for quality improvement.
+
+---
+
+## Current production configuration
+
+| Component | Value |
+|---|---|
+| Generator | Qwen3-8B-Q5_K_M |
+| Context size | 5120 tokens |
+| Default retrieval | `vector` (semantic + legal authority reranker) |
+| Statute routing | `rta_routes.py` - 8 intents, forced section injection |
+| RTA extraction | Live heading-aware extractor (legislation.govt.nz, 1h cache) |
+| Context packing | Statute-first (RTA anchor prepended before case chunks) |
+| Web verify | Enabled for all users, DDG via Playwright, Redis 7-day cache |
+| Debug mode | Key-gated, not exposed to public users |
+
+---
+
 ## What makes it different from the general RAG API
 
 | Feature | General API | Tenancy tool |
 |---|---|---|
-| Corpus | All 13 courts, 2.8M+ chunks | NZTT only (MoJ 31,240 decisions + NZLII) |
+| Corpus | All 13 courts, 2.8M+ chunks | Dedicated NZTT corpus: MoJ 31,240 decisions + NZLII (separate from the multi-court benchmark corpus in the root README) |
 | BM25 | Conditional (statute/citation queries) | Two-pass AND/OR with legal stopwords |
 | Live legislation | Not included | RTA 1986 fetched via headless browser, 1h cache |
 | Web verify | Not included | DDG search grounded by law section, Redis 7d cache |
@@ -438,6 +470,9 @@ removes everything.
 
 #### Debug visibility
 
+Debug mode is key-gated because it exposes internal prompts, retrieved context,
+route decisions, and raw source snippets. It must not be enabled for public users.
+
 The `context_debug` SSE event (always emitted, panel rendered in debug mode only)
 includes a `statute_routing` block:
 
@@ -447,7 +482,7 @@ includes a `statute_routing` block:
     "triggered": true,
     "matched_routes": ["agreement_form", "bond"],
     "trigger_terms": ["tenancy agreement", "bond", "work and income"],
-    "forced_sections": ["NZLEG/RTA/s13", "NZLEG/RTA/s18", "NZLEG/RTA/s19"],
+    "forced_sections": ["NZLEG/RTA/s13A", "NZLEG/RTA/s13B", "NZLEG/RTA/s18"],
     "suppressed_sections": [
       {
         "section": "NZLEG/RTA/s16A",
@@ -520,3 +555,29 @@ Each was added after a confirmed failure was observed and fixed.
 | `tenancy_fair_wear_and_tear` | `wear_and_tear` | s49A, s49B | s66N | s49A missing; s66N (mitigation) surfacing instead |
 | `tenancy_bond_proof_before_agreement` | `agreement_form`, `bond` | s13A, s18 | s16A, s13 | s16A (overseas agent) surfacing; s13 resolves to Smoke Alarms Regulations |
 | `tenancy_landlord_repairs_maintenance` | `repairs_maintenance` | s45 | s42A, s42B | Fixture-consent sections surfacing for repair-obligation query |
+
+---
+
+## Feedback to regression workflow
+
+When a user gives thumbs-down, a full artifact is silently posted to
+`POST /feedback/full` and appended to `data/feedback_full.jsonl`. Each entry
+contains the query, rewritten query, statute routing block, retrieved sources,
+RTA anchor sections, and answer metadata. This makes routing and retrieval
+failures diagnosable without reproducing the query.
+
+Workflow:
+
+1. User gives thumbs-down.
+2. `feedback_full.jsonl` records `context_debug.statute_routing` (matched routes,
+   trigger terms, forced sections, suppressed sections), chunk cards, and the
+   full generated answer.
+3. Developer inspects the entry - check `statute_routing.matched_routes`,
+   `anchor.sections`, and `chunks` to identify the failure mode.
+4. If the failure is real (wrong section surfaced, correct section missing),
+   add a regression entry to `benchmarks/datasets/retrieval_gold.jsonl` with
+   `expected_documents` and `must_not_include` set to the confirmed good/bad IDs.
+5. Add or update the route in `tenancy/rta_routes.py`, or update
+   `LOW_PRIORITY_SECTIONS` if a false-positive section needs suppression.
+6. Run the benchmark runner against `retrieval_gold.jsonl` and confirm the new
+   entry passes before deploying.
