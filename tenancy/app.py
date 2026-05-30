@@ -870,38 +870,43 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
             if debug_mode:
                 yield f"data: {json.dumps({'type': 'debug', 'strategy': strategy, 'retrieve_ms': round(t_retrieve * 1000), 'scores': scores, 'top': max(scores), 'min': min(scores), 'avg': round(sum(scores) / len(scores), 4), 'chunks': len(scores)})}\n\n"
-                prop_change = bool(gate_stats)
-                trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in retrieval_question.lower()][:6] if prop_change else []
-                anchor_method = "live_heading_aware" if (live_text and leg_sources) else ("vector_store" if leg_sources else "none")
-                chunk_cards = _chunk_debug_cards(context_texts, sources, prop_change)
-                anchor_cards = _anchor_debug_cards(leg_sources, anchor_method, live_text)
-                anchor_tokens = sum(c["tokens"] for c in anchor_cards)
-                chunk_tokens = sum(c["tokens"] for c in chunk_cards)
-                truncated = sum(1 for t in context_texts if len(t) > 1500)
-                ctx_debug_payload = {
-                    "type": "context_debug",
-                    "original_query": question,
-                    "rewritten_query": retrieval_question,
-                    "rewrite_used": retrieval_question.strip() != question.strip(),
-                    "planner": {
-                        "property_change_triggered": prop_change,
-                        "trigger_terms": trigger_terms,
-                        "forced_sections": sorted(_PROP_CHANGE_DESIRED_SECTIONS) if prop_change else [],
-                        "gate": gate_stats if prop_change else None,
-                    },
-                    "anchor": {"method": anchor_method, "sections": anchor_cards},
-                    "chunks": chunk_cards,
-                    "budget": {
-                        "total_tokens": anchor_tokens + chunk_tokens,
-                        "ctx_limit": _LLM_CTX_TOKENS,
-                        "anchor_tokens": anchor_tokens,
-                        "chunk_tokens": chunk_tokens,
-                        "sources_sent": len(context_texts),
-                        "leg_sections": len(leg_sources),
-                        "truncated_chunks": truncated,
-                    },
-                }
-                yield f"data: {json.dumps(ctx_debug_payload)}\n\n"
+
+            prop_change = bool(gate_stats)
+            wear_tear = _detect_wear_tear(question)
+            trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in retrieval_question.lower()][:6] if prop_change else []
+            wear_tear_terms = [t for t in sorted(_WEAR_TEAR_TERMS) if t in question.lower()][:6] if wear_tear else []
+            anchor_method = "live_heading_aware" if (live_text and leg_sources) else ("vector_store" if leg_sources else "none")
+            chunk_cards = _chunk_debug_cards(context_texts, sources, prop_change)
+            anchor_cards = _anchor_debug_cards(leg_sources, anchor_method, live_text)
+            anchor_tokens = sum(c["tokens"] for c in anchor_cards)
+            chunk_tokens = sum(c["tokens"] for c in chunk_cards)
+            truncated = sum(1 for t in context_texts if len(t) > 1500)
+            ctx_debug_payload = {
+                "type": "context_debug",
+                "original_query": question,
+                "rewritten_query": retrieval_question,
+                "rewrite_used": retrieval_question.strip() != question.strip(),
+                "planner": {
+                    "property_change_triggered": prop_change,
+                    "wear_tear_triggered": wear_tear,
+                    "trigger_terms": trigger_terms,
+                    "wear_tear_terms": wear_tear_terms,
+                    "forced_sections": sorted(_PROP_CHANGE_DESIRED_SECTIONS) if prop_change else (sorted(_WEAR_TEAR_DESIRED_SECTIONS) if wear_tear else []),
+                    "gate": gate_stats if prop_change else None,
+                },
+                "anchor": {"method": anchor_method, "sections": anchor_cards},
+                "chunks": chunk_cards,
+                "budget": {
+                    "total_tokens": anchor_tokens + chunk_tokens,
+                    "ctx_limit": _LLM_CTX_TOKENS,
+                    "anchor_tokens": anchor_tokens,
+                    "chunk_tokens": chunk_tokens,
+                    "sources_sent": len(context_texts),
+                    "leg_sections": len(leg_sources),
+                    "truncated_chunks": truncated,
+                },
+            }
+            yield f"data: {json.dumps(ctx_debug_payload)}\n\n"
 
             gen_question = question + _IRAC_SUFFIX if req.irac else question
             t_gen = time.monotonic()

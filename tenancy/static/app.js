@@ -1174,7 +1174,7 @@ form.addEventListener('submit', async (e) => {
           if (_debugInfo) _renderDebugPanel(_debugInfo, event);
         } else if (event.type === 'context_debug') {
           _artifact.context_debug = event;
-          _renderContextDebugPanel(event, resultCard);
+          if (_debugMode) _renderContextDebugPanel(event, resultCard);
         } else if (event.type === 'token') {
           if (!streamingStarted) {
             streamingStarted = true;
