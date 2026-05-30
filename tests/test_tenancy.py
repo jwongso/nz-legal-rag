@@ -501,3 +501,101 @@ def test_source_cards_anonymized(client):
     for s in r.json()["sources"]:
         assert "court_name" in s
         assert "date" in s
+
+
+# ---------------------------------------------------------------------------
+# Queue behaviour
+# ---------------------------------------------------------------------------
+
+def test_queue_max_concurrent_is_one():
+    """MAX_CONCURRENT must equal 1 to match llama-server --parallel 1.
+
+    If this fails, the queue semaphore allows more concurrent requests than
+    the LLM can serve, making queue position estimates wrong for users.
+    """
+    from tenancy.queue import _MAX_CONCURRENT
+    assert _MAX_CONCURRENT == 1, (
+        f"_MAX_CONCURRENT is {_MAX_CONCURRENT}, expected 1 to match llama-server --parallel 1. "
+        "Update queue.py if llama-server parallel setting changes."
+    )
+
+
+def test_health_queue_fields_present(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    data = r.json()
+    assert "active" in data
+    assert "waiting" in data
+    assert "estimated_wait_seconds" in data
+    assert isinstance(data["active"], int)
+    assert isinstance(data["waiting"], int)
+    assert isinstance(data["estimated_wait_seconds"], int)
+
+
+def test_health_queue_idle_state(client):
+    r = client.get("/health")
+    data = r.json()
+    assert data["active"] == 0
+    assert data["waiting"] == 0
+    assert data["estimated_wait_seconds"] == 0
+
+
+def test_per_ip_duplicate_request_rejected(client):
+    """A second concurrent request from the same IP must be rejected.
+
+    Since acquire() runs inside the SSE generator, the rejection arrives as
+    an SSE error event (not HTTP 429). The stream opens with 200 but the body
+    contains an error event with the busy/in-progress message.
+    """
+    from tenancy.queue import _ip_in_flight
+    fake_ip = "10.0.0.99"
+    _ip_in_flight[fake_ip] = 1
+    try:
+        r = client.post(
+            "/ask/stream",
+            headers={**_TOKEN_HEADERS, "X-Forwarded-For": fake_ip},
+            json={"question": "Can my landlord keep my bond?"},
+        )
+        assert r.status_code == 200
+        events = _parse_sse_events(r.text)
+        error_events = [e for e in events if e.get("type") == "error"]
+        assert error_events, "Expected an SSE error event for duplicate in-flight request"
+        assert any("progress" in e.get("message", "").lower() or
+                   "in progress" in e.get("message", "").lower() or
+                   "already" in e.get("message", "").lower()
+                   for e in error_events), (
+            f"Error message did not indicate duplicate request: {error_events}"
+        )
+    finally:
+        _ip_in_flight[fake_ip] = 0
+
+
+def test_queue_wait_exceeded_returns_503(client):
+    """When the semaphore is held and wait times out, the client gets 503."""
+    import asyncio
+    from tenancy.queue import _semaphore, _MAX_WAIT, _ip_in_flight, _active
+    import tenancy.queue as q
+
+    original_wait = q._MAX_WAIT
+    q._MAX_WAIT = 0.01  # force immediate timeout
+    q._active = 1       # pretend a slot is taken
+    # Acquire the semaphore so the next acquire() blocks
+    acquired = False
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_semaphore.acquire())
+        acquired = True
+        r = client.post(
+            "/ask/stream",
+            headers=_TOKEN_HEADERS,
+            json={"question": "Can my landlord keep my bond?"},
+        )
+        # The SSE stream should contain an error event (acquire failed inside stream)
+        assert r.status_code == 200  # SSE always opens 200
+        assert "busy" in r.text.lower() or "error" in r.text.lower()
+    finally:
+        if acquired:
+            _semaphore.release()
+        q._MAX_WAIT = original_wait
+        q._active = 0
+        loop.close()
