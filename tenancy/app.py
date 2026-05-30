@@ -38,7 +38,7 @@ from tenancy.rta_routes import (
 from rag.live_verify.browser import BrowserSession
 from rag.pipeline import RAGPipeline
 from rag.retriever import VectorStore
-from tenancy.queue import acquire, get_client_ip, queue_status, release
+from tenancy.queue import acquire, get_client_ip, queue_status, queue_wait_estimate, release, will_wait
 
 _TENANCY_SYSTEM_PROMPT = """You are a free legal research assistant helping New Zealand tenants understand \
 their rights based on real Tenancy Tribunal decisions.
@@ -811,14 +811,22 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
     if len(question) > 5000:
         raise HTTPException(status_code=400, detail={"error": "Question too long (max 5000 characters)."})
 
-    ip = await acquire(request)
-
     debug_mode = bool(_DEBUG_KEY and req.debug_key == _DEBUG_KEY)
     strategy = req.strategy if debug_mode and req.strategy in _VALID_STRATEGIES else "vector"
 
     async def _event_stream():
+        ip: str | None = None
         t0 = time.monotonic()
         try:
+            if will_wait():
+                yield f"data: {json.dumps({'type': 'queue', **queue_wait_estimate()})}\n\n"
+            try:
+                ip = await acquire(request)
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {"error": str(exc.detail)}
+                yield f"data: {json.dumps({'type': 'error', 'message': detail.get('error', 'Server busy. Please try again.')})}\n\n"
+                return
+
             # BM25 uses a different score scale - skip cosine min_score filter
             retrieve_kwargs: dict = {"top_k": 5, "strategy": strategy}
             if strategy != "bm25":
@@ -918,7 +926,8 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
         finally:
-            release(ip)
+            if ip:
+                release(ip)
 
     return StreamingResponse(
         _event_stream(),
@@ -949,11 +958,17 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
         raise HTTPException(status_code=400, detail={"error": "No valid strategies selected."})
 
     thinking = req.thinking
-    ip = await acquire(request)
 
     async def _compare_stream():
         import time
+        ip: str | None = None
         queue: asyncio.Queue = asyncio.Queue()
+        try:
+            ip = await acquire(request)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {"error": str(exc.detail)}
+            yield f"data: {json.dumps({'type': 'error', 'message': detail.get('error', 'Server busy.')})}\n\n"
+            return
 
         # Shared RTA anchor + leg_sources for web verify (same question, run once)
         shared_anchor, shared_leg_sources, _cmp_route_debug = await _retrieve_rta_anchor(question, question)
@@ -1053,7 +1068,8 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
             for t in tasks:
                 t.cancel()
             await asyncio.gather(web_task, *tasks, return_exceptions=True)
-            release(ip)
+            if ip:
+                release(ip)
 
     return StreamingResponse(
         _compare_stream(),

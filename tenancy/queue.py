@@ -37,6 +37,18 @@ def queue_status() -> dict:
     }
 
 
+def will_wait() -> bool:
+    """Return True if the next acquire() call will block (all slots are active)."""
+    return _active >= _MAX_CONCURRENT
+
+
+def queue_wait_estimate() -> dict:
+    """Return position and estimated wait for a request about to acquire."""
+    position = _waiting + 1
+    estimated = (position * _AVG_QUERY_SECONDS) // max(1, _MAX_CONCURRENT)
+    return {"position": position, "active": _active, "estimated_wait_s": estimated}
+
+
 async def acquire(request: Request) -> str:
     global _active, _waiting
     ip = get_client_ip(request)

@@ -261,6 +261,19 @@ function _renderContextDebugPanel(ev, container) {
     const rejectedNote = gate.rejected && gate.rejected.length ? ` | rejected: ${escapeHtml(gate.rejected.join(', '))}` : '';
     qHtml += `<div class="ctx-query-row"><span class="ctx-label">Gate filter</span><span class="ctx-meta-val">before: ${gate.candidates_before ?? '?'} | survived: ${gate.survived ?? '?'}${escapeHtml(fallbackNote)}${rejectedNote}</span></div>`;
   }
+  const sr = ev.statute_routing || {};
+  if (sr.triggered) {
+    const routes = (sr.matched_routes || []).join(', ');
+    const injected = (sr.forced_sections || []).map(s => s.replace('NZLEG/RTA/', '')).join(', ') || 'none';
+    const terms = (sr.trigger_terms || []).join(', ');
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Statute routing</span><span class="ctx-meta-val ctx-gate-yes">routes: ${escapeHtml(routes)} | terms: ${escapeHtml(terms)} | injected: ${escapeHtml(injected)}</span></div>`;
+    if (sr.suppressed_sections && sr.suppressed_sections.length) {
+      const sup = sr.suppressed_sections.map(s => s.section.replace('NZLEG/RTA/', '')).join(', ');
+      qHtml += `<div class="ctx-query-row"><span class="ctx-label">Suppressed</span><span class="ctx-meta-val">${escapeHtml(sup)}</span></div>`;
+    }
+  } else if (ev.statute_routing !== undefined) {
+    qHtml += `<div class="ctx-query-row"><span class="ctx-label">Statute routing</span><span class="ctx-meta-val">no route matched - leg_store vector only</span></div>`;
+  }
   qHtml += '</div>';
   const qBlock = document.createElement('div');
   qBlock.innerHTML = qHtml;
@@ -1172,6 +1185,8 @@ form.addEventListener('submit', async (e) => {
         } else if (event.type === 'debug_done') {
           _artifact.debug_timing = { generate_ms: event.generate_ms, total_ms: event.total_ms };
           if (_debugInfo) _renderDebugPanel(_debugInfo, event);
+        } else if (event.type === 'queue') {
+          loadingText.textContent = `Position ${event.position} in queue - estimated wait ~${event.estimated_wait_s}s`;
         } else if (event.type === 'context_debug') {
           _artifact.context_debug = event;
           if (_debugMode) _renderContextDebugPanel(event, resultCard);
