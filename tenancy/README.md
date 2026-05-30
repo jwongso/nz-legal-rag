@@ -45,6 +45,29 @@ is diagnosed and fixed.
 
 ---
 
+## Tenancy-specific benchmark
+
+The tenancy layer has behavior that the root pipeline evaluation does not cover:
+live RTA anchors, property-change routing, web verify, compare mode, and public
+access constraints. The table below defines what each test dimension measures and
+what a failure indicates.
+
+| Test dimension | What it measures | Failure mode caught |
+|---|---|---|
+| RTA section retrieval | Correct legislation sections surface for the query (e.g. s42A/s42B for fixture queries, not s16A/s19) | Lexicon injection not firing; embedding mismatch |
+| Anchor correctness | Live anchor contains substantive section text, not Schedule 1A penalty-table rows | Heading-aware extraction regex regressed |
+| NZTT case relevance | Retrieved tribunal chunks are on-point for the query topic | Prop-change gate not filtering; score threshold too low |
+| Web verify relevance | DDG results address the same law section or issue as the question | Query too generic; stale Redis entry with wrong content |
+| Citation correctness | Every [SN] citation in the answer maps to a retrieved source ID | Model hallucinating section numbers or case references |
+| Practical-step quality | "Already done" questions include concrete next steps, not only hindsight | System prompt rule absent; model ignoring past-tense signal |
+| Compare mode parity | All 4 strategies receive the same RTA anchor and web verify result | Shared anchor or web task not propagating correctly |
+
+Each dimension maps to at least one entry in `retrieval_gold.jsonl`. The
+planted-trees regression (`tenancy_planted_trees_backyard`) covers the first
+four dimensions simultaneously.
+
+---
+
 ## Architecture
 
 ```
