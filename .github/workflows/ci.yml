@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate RTA route sections against Qdrant
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          TENANCY_STRICT_ROUTE_VALIDATION: "1"
+        run: python3 scripts/validate_rta_routes.py
+
+      - name: RTA extractor unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python3 -m pytest tests/test_rta_extractor.py -v
+
+      - name: RTA route integration tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python3 -m pytest tests/test_rta_routes.py -v
