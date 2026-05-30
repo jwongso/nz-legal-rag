@@ -397,11 +397,18 @@ rewrite carries formal legal terms ("bond lodgement", "repair obligations").
 | `wear_and_tear` | "fair wear and tear", "damage claim", "landlord charge" | s49A, s49B, s40 |
 | `property_change` | "plant", "tree", "garden", "fixture", "alteration" | s40, s42A, s42B |
 | `repairs_maintenance` | "not working", "broken", "mould", "hot water", "maintenance" | s45 |
-| `agreement_form` | "tenancy agreement", "before signing", "copy of agreement" | s13 |
-| `bond` | "bond lodgement", "work and income", "bond receipt", "proof of bond" | s18, s19 |
+| `agreement_form` | "tenancy agreement", "before signing", "copy of agreement" | s13A, s13B |
+| `bond` | "bond lodgement", "work and income", "bond receipt", "proof of bond" | s18 |
 | `landlord_entry` | "landlord entry", "inspection notice", "24 hours notice" | s48 |
 | `termination_notice` | "evict", "90 days notice", "end the tenancy", "notice to leave" | s51 |
-| `rent_payment` | "rent increase", "raise the rent", "weeks rent in advance" | s54, s55 |
+| `rent_payment` | "rent increase", "raise the rent", "weeks rent in advance" | s28, s28A |
+
+**Important:** Section IDs must match what is actually indexed in Qdrant. The corpus
+contains sections from the RTA itself plus its associated regulations, all under the
+`NZLEG/RTA/` namespace. Verify any new `forced_sections` value exists with the correct
+content before adding it to a route - some IDs resolve to regulation sections rather
+than the main Act (e.g. `s13` is the Smoke Alarms Regulations, not "Form of tenancy
+agreement"; the correct ID is `s13A`). Use the Qdrant scroll API to verify.
 
 Each route has a `synthetic_query` string tuned to retrieve the forced
 sections from the leg_store embedding index. This bridges the gap between
@@ -511,5 +518,5 @@ Each was added after a confirmed failure was observed and fixed.
 |---|---|---|---|---|
 | `tenancy_planted_trees_backyard` | `property_change` | s42A, s42B | s19, s16A | Fixture-consent sections not surfacing for garden queries |
 | `tenancy_fair_wear_and_tear` | `wear_and_tear` | s49A, s49B | s66N | s49A missing; s66N (mitigation) surfacing instead |
-| `tenancy_bond_proof_before_agreement` | `agreement_form`, `bond` | s13, s18, s19 | s16A | s16A (overseas agent) surfacing for bond/agreement query |
+| `tenancy_bond_proof_before_agreement` | `agreement_form`, `bond` | s13A, s18 | s16A, s13 | s16A (overseas agent) surfacing; s13 resolves to Smoke Alarms Regulations |
 | `tenancy_landlord_repairs_maintenance` | `repairs_maintenance` | s45 | s42A, s42B | Fixture-consent sections surfacing for repair-obligation query |

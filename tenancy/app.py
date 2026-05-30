@@ -267,11 +267,12 @@ async def _retrieve_rta_anchor(
         rta = [h for h in raw if h.case_id.startswith("NZLEG/RTA/")]
         seen: set[str] = set()
         hits = []
+        max_hits = 3 if injected_ids else 2  # extra slot when routing injects sections
         for h in rta:
             if h.case_id not in seen:
                 seen.add(h.case_id)
                 hits.append(h)
-            if len(hits) >= 2:
+            if len(hits) >= max_hits:
                 break
         if not hits:
             return "", [], route_debug_info(matched, injected_ids, suppressed_ids, original_question or question, question)

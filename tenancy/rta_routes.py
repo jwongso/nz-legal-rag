@@ -99,14 +99,14 @@ ROUTES: list[StatuteRoute] = [
             "tenancy agreement", "written agreement", "copy of agreement",
             "sign agreement", "signing agreement", "before signing",
             "provide agreement", "give the agreement", "before getting the agreement",
-            "form of agreement", "written tenancy",
+            "form of agreement", "written tenancy", "contents of agreement",
         ),
-        forced_sections=("NZLEG/RTA/s13",),
+        forced_sections=("NZLEG/RTA/s13A", "NZLEG/RTA/s13B"),
         synthetic_query=(
-            "tenancy agreement must be in writing landlord provide signed copy "
-            "form of agreement section 13 residential tenancies act"
+            "contents of tenancy agreement landlord obligations provide copy "
+            "section 13A written tenancy agreement residential tenancies act"
         ),
-        notes="Form, content, and copy obligations for tenancy agreements.",
+        notes="Contents and copy obligations for tenancy agreements (s13A, s13B).",
     ),
     StatuteRoute(
         intent=RouteIntent.BOND,
@@ -116,14 +116,14 @@ ROUTES: list[StatuteRoute] = [
             "bond before", "bond form", "bond help",
             "work and income", "winz", "bond guarantee",
             "can pay the bond", "pay the bond",
-            "s18", "s19",
+            "s18",
         ),
-        forced_sections=("NZLEG/RTA/s18", "NZLEG/RTA/s19"),
+        forced_sections=("NZLEG/RTA/s18",),
         synthetic_query=(
-            "bond landlord duties receipt lodgement section 18 section 19 "
-            "residential tenancies act 23 working days bond centre"
+            "general bond landlord maximum bond amount four weeks rent section 18 "
+            "residential tenancies act bond obligations receipt"
         ),
-        notes="Bond receipt and lodgement duties (s18, s19).",
+        notes="General bond requirements - amount limits and receipt (s18).",
     ),
     StatuteRoute(
         intent=RouteIntent.LANDLORD_ENTRY,
@@ -167,14 +167,14 @@ ROUTES: list[StatuteRoute] = [
             "rent increase", "increase the rent", "raise the rent", "raised the rent",
             "rent rise", "rent review", "maximum rent", "rent in advance",
             "weeks rent in advance", "how much rent",
-            "s54", "s55",
+            "s28", "s28a",
         ),
-        forced_sections=("NZLEG/RTA/s54", "NZLEG/RTA/s55"),
+        forced_sections=("NZLEG/RTA/s28", "NZLEG/RTA/s28A"),
         synthetic_query=(
-            "landlord increase rent notice 90 days section 54 55 residential "
-            "tenancies act rent review maximum advance weeks"
+            "notice to increase rent landlord section 28 28A residential tenancies act "
+            "rent increase order unforeseen expenses 90 days"
         ),
-        notes="Rent increases, review, and advance rent limits (s54, s55).",
+        notes="Rent increases by notice or order (s28, s28A).",
     ),
 ]
 
@@ -233,16 +233,18 @@ def route_debug_info(
         for term in route.include_any:
             if term in q and term not in trigger_terms:
                 trigger_terms.append(term)
+    seen_sup: set[str] = set()
+    deduped_suppressed = []
+    for s in suppressed:
+        if s not in seen_sup:
+            seen_sup.add(s)
+            deduped_suppressed.append(
+                {"section": s, "reason": "low_priority_section - query does not mention relevant terms"}
+            )
     return {
         "triggered": bool(matched),
         "matched_routes": [r.intent.value for r in matched],
         "trigger_terms": trigger_terms[:8],
         "forced_sections": injected_ids,
-        "suppressed_sections": [
-            {
-                "section": s,
-                "reason": "low_priority_section - query does not mention relevant terms",
-            }
-            for s in suppressed
-        ],
+        "suppressed_sections": deduped_suppressed,
     }
