@@ -37,7 +37,6 @@ pipeline, corpus ingestion, and evaluation harness see the root `README.md`.
 | RTA extraction | Live heading-aware extractor (legislation.govt.nz, 1h cache) |
 | Context packing | Statute-first (RTA anchor prepended before case chunks) |
 | Web verify | Enabled for all users, DDG via Playwright, Redis 7-day cache |
-| Debug mode | Key-gated, not exposed to public users |
 
 ---
 
@@ -144,7 +143,7 @@ Browser client (SSE)
 
 ## Retrieval strategies
 
-Four strategies are available, selectable in debug mode:
+Four strategies are available:
 
 | Strategy | Description |
 |---|---|
@@ -153,9 +152,8 @@ Four strategies are available, selectable in debug mode:
 | `mmr` | Maximal Marginal Relevance - diversified results |
 | `bm25` | PostgreSQL full-text (two-pass AND/OR, legal stopwords) |
 
-In single-strategy mode (default for public users), `vector` is always used.
-In debug mode, one or more strategies can be selected. Selecting more than one
-activates compare mode.
+Public users always use `vector`. Selecting more than one strategy activates
+compare mode (`POST /ask/stream/compare`).
 
 ---
 
@@ -256,9 +254,7 @@ In compare mode: emitted before `all_done`, rendered spanning all strategy colum
 | `sources` | After retrieval | `sources`, `legislation` arrays |
 | `confidence` | After retrieval | `level`, `message` |
 | `web_results` | After web verify | `results`, `cached` |
-| `debug` | Debug mode only | `strategy`, `retrieve_ms`, `scores`, `chunks` |
 | `token` | During generation | `text` (streamed token) |
-| `debug_done` | Debug mode only, after tokens | `generate_ms`, `total_ms` |
 | `done` | After all tokens | (empty) |
 | `verification` | After done | `sections` (live RTA section excerpts) |
 | `error` | On failure | `message` |
@@ -291,7 +287,6 @@ In compare mode: emitted before `all_done`, rendered spanning all strategy colum
 | `POST` | `/search` | Token | Web search via Playwright DDG (benchmark runner) |
 | `POST` | `/feedback` | Token | Thumbs up/down feedback |
 | `GET` | `/legislation/cases` | Token | Cases citing a given RTA section |
-| `GET` | `/debug/ping` | Debug key | Debug mode activation check |
 
 ### AskRequest fields
 
@@ -299,7 +294,6 @@ In compare mode: emitted before `all_done`, rendered spanning all strategy colum
 class AskRequest(BaseModel):
     question: str
     strategy: str = "vector"
-    debug_key: str = ""
     irac: bool = False         # structure answer as IRAC
     verify: bool = True        # run web verify (default on)
     alwaysonline: bool = False # bypass Redis cache, always fetch fresh
@@ -314,7 +308,6 @@ Environment variables (set in `tenancy-api.service`):
 | Variable | Purpose |
 |---|---|
 | `TENANCY_API_TOKEN` | Public API token served to browser clients at `/token` |
-| `TENANCY_DEBUG_KEY` | Key to activate debug mode (Ctrl+Shift+D in browser) |
 | `TENANCY_REDIS_URL` | Redis URL (default: `redis://localhost:6379`) |
 
 The app degrades gracefully if Redis is unavailable - web verify still works, it
@@ -355,17 +348,6 @@ The app serves a strict `style-src 'self'` Content Security Policy. Inline
 `style="..."` attributes are blocked. Dynamic styles (score bar widths) are
 applied via `element.style.width = ...` in JavaScript after innerHTML is set,
 which is allowed by CSP.
-
-### Debug mode
-
-Activated in the browser with Ctrl+Shift+D and the debug key. Enables:
-- Strategy selector (single or multi-strategy compare mode)
-- Retrieval debug panel (scores, timing, strategy label)
-- IRAC toggle
-- Thinking mode toggle (compare mode only)
-
-The web verify panel (LIVE/CACHED badge + source list) is always visible to all
-users - it is not gated behind debug mode.
 
 ---
 
@@ -468,13 +450,9 @@ This filters irrelevant cases that match broadly on "property" and "breach" but
 contribute no useful reasoning. Falls back to the original results if the gate
 removes everything.
 
-#### Debug visibility
+#### Routing observability
 
-Debug mode is key-gated because it exposes internal prompts, retrieved context,
-route decisions, and raw source snippets. It must not be enabled for public users.
-
-The `context_debug` SSE event (always emitted, panel rendered in debug mode only)
-includes a `statute_routing` block:
+The `context_debug` SSE event (always emitted) includes a `statute_routing` block:
 
 ```json
 {
@@ -493,9 +471,8 @@ includes a `statute_routing` block:
 }
 ```
 
-This block is also stored in every thumbs-down `feedback_full.jsonl` entry
-(for all users, not just debug mode), making routing failures immediately
-diagnosable from the feedback log.
+This block is also stored in every thumbs-down `feedback_full.jsonl` entry,
+making routing failures immediately diagnosable from the feedback log.
 
 #### Adding a new route
 
@@ -569,9 +546,8 @@ failures diagnosable without reproducing the query.
 Workflow:
 
 1. User gives thumbs-down.
-2. `feedback_full.jsonl` records `context_debug.statute_routing` (matched routes,
-   trigger terms, forced sections, suppressed sections), chunk cards, and the
-   full generated answer.
+2. `feedback_full.jsonl` records `statute_routing` (matched routes, trigger terms,
+   forced sections, suppressed sections), chunk cards, and the full generated answer.
 3. Developer inspects the entry - check `statute_routing.matched_routes`,
    `anchor.sections`, and `chunks` to identify the failure mode.
 4. If the failure is real (wrong section surfaced, correct section missing),
