@@ -28,6 +28,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import config
 from rag.generator import Generator
+from tenancy.rta_routes import (
+    RouteIntent,
+    allow_section,
+    match_routes,
+    normalize_query,
+    route_debug_info,
+)
 from rag.live_verify.browser import BrowserSession
 from rag.pipeline import RAGPipeline
 from rag.retriever import VectorStore
@@ -186,6 +193,9 @@ async def _rewrite_query(question: str) -> str:
 
 
 # Property-change query detection: terms that suggest a tenant altered the property.
+# _PROP_CHANGE_TERMS is kept for _filter_prop_change_chunks() case relevance gate.
+# Anchor injection for property-change (and all other intents) is now handled by
+# the structured routing table in tenancy/rta_routes.py.
 _PROP_CHANGE_TERMS = frozenset({
     "plant", "planted", "planting", "tree", "trees", "shrub", "hedge",
     "garden", "backyard", "back yard", "lawn", "landscap", "outdoor",
@@ -195,81 +205,64 @@ _PROP_CHANGE_TERMS = frozenset({
     "added", "modify", "modification", "paint", "painted",
 })
 
-# Synthetic query tuned to surface s40/s42A/s42B from the leg_store embedding index.
-# Raw questions like "planted trees backyard" have low cosine similarity to those
-# section titles; this query bridges the gap.
-_PROP_CHANGE_SYNTHETIC_QUERY = (
-    "tenant obligations alter improve add fixtures to land garden written consent landlord "
-    "section 40 42A 42B residential tenancies act"
-)
-
-_PROP_CHANGE_DESIRED_SECTIONS = frozenset({"NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"})
-
 
 def _detect_prop_change(question: str) -> bool:
     q = question.lower()
     return any(term in q for term in _PROP_CHANGE_TERMS)
 
 
-# Fair wear and tear / tenant damage query detection.
-# "wear and tear" has low cosine similarity to "s49A Tenant not liable" section titles,
-# so the embedding index often surfaces s66N (mitigation) or s49B instead of the core
-# rule. Force s49A and s49B to the front for these queries.
-_WEAR_TEAR_TERMS = frozenset({
-    "fair wear and tear", "wear and tear",
-    "tenant damage", "damage claim",
-    "landlord charge", "repair cost",
-    "liable for damage", "damage to the",
-    "s49a", "s49b",
-})
+async def _retrieve_rta_anchor(
+    question: str, original_question: str = ""
+) -> tuple[str, list[dict], dict]:
+    """Return (anchor_text, leg_sources, route_debug) for the top 2 RTA sections.
 
-_WEAR_TEAR_SYNTHETIC_QUERY = (
-    "tenant not liable fair wear tear exception section 49A damage landlord cannot charge "
-    "deterioration reasonable use natural forces residential tenancies act"
-)
+    anchor_text is injected before the [S1]-[SN] block so the LLM reads actual Act
+    text and cites correct section numbers without hallucinating them.
+    leg_sources is sent to the frontend for display.
+    route_debug is included in context_debug for diagnostic purposes.
 
-_WEAR_TEAR_DESIRED_SECTIONS = frozenset({"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40"})
-
-
-def _detect_wear_tear(question: str) -> bool:
-    q = question.lower()
-    return any(term in q for term in _WEAR_TEAR_TERMS)
-
-
-async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
-    """Return (anchor_text, leg_sources) for the top 2 RTA sections most relevant to the question.
-
-    anchor_text is injected before the numbered [S1]-[SN] block so the LLM reads the
-    actual Act text and cites correct section numbers without hallucinating them.
-    leg_sources is sent to the frontend for display alongside Tribunal decisions.
-    Lexicon injections prepend desired sections for query types where raw embeddings
-    produce poor section matches (property-change, wear-and-tear).
+    Routing: match_routes() runs on both original and rewritten queries together
+    (original catches colloquial signals; rewrite catches formal legal terms).
+    Matched routes' forced sections are prepended before vector results.
+    allow_section() suppresses known false-positive sections (e.g. s16A).
     """
     if _leg_store is None or _pipeline is None:
-        return "", []
+        return "", [], {}
     try:
         vector = await _pipeline._embedder.embed(question)
         raw = _leg_store.search(vector, top_k=12, courts=["NZLEG"])
 
-        if _detect_prop_change(question):
-            synth_vector = await _pipeline._embedder.embed(_PROP_CHANGE_SYNTHETIC_QUERY)
+        # Route-based injection: embed each matched route's synthetic query,
+        # find the forced sections, prepend them (deduplicated).
+        matched = match_routes(original_question or question, question)
+        injected_ids: list[str] = []
+        injections: list = []
+        seen_inject: set[str] = set()
+        for route in matched:
+            synth_vector = await _pipeline._embedder.embed(route.synthetic_query)
             synth_raw = _leg_store.search(synth_vector, top_k=8, courts=["NZLEG"])
             existing_ids = {h.case_id for h in raw}
-            desired_hits = [
-                h for h in synth_raw
-                if h.case_id in _PROP_CHANGE_DESIRED_SECTIONS and h.case_id not in existing_ids
-            ]
-            raw = desired_hits + raw  # prepend desired sections
+            for h in synth_raw:
+                if (
+                    h.case_id in route.forced_sections
+                    and h.case_id not in existing_ids
+                    and h.case_id not in seen_inject
+                ):
+                    injections.append(h)
+                    seen_inject.add(h.case_id)
+                    injected_ids.append(h.case_id)
+        raw = injections + raw
 
-        if _detect_wear_tear(question):
-            synth_vector = await _pipeline._embedder.embed(_WEAR_TEAR_SYNTHETIC_QUERY)
-            synth_raw = _leg_store.search(synth_vector, top_k=8, courts=["NZLEG"])
-            existing_ids = {h.case_id for h in raw}
-            desired_hits = [
-                h for h in synth_raw
-                if h.case_id in _WEAR_TEAR_DESIRED_SECTIONS and h.case_id not in existing_ids
-            ]
-            raw = desired_hits + raw  # prepend desired sections
+        # Suppress low-priority sections unless the query explicitly requests them.
+        combined_q = normalize_query((original_question or question) + " " + question)
+        suppressed_ids: list[str] = []
+        filtered: list = []
+        for h in raw:
+            if allow_section(h.case_id, combined_q):
+                filtered.append(h)
+            else:
+                suppressed_ids.append(h.case_id)
+        raw = filtered
 
         rta = [h for h in raw if h.case_id.startswith("NZLEG/RTA/")]
         seen: set[str] = set()
@@ -281,7 +274,7 @@ async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
             if len(hits) >= 2:
                 break
         if not hits:
-            return "", []
+            return "", [], route_debug_info(matched, injected_ids, suppressed_ids, original_question or question, question)
         lines = [
             "Relevant sections of the Residential Tenancies Act 1986 "
             "(legislative context - use for grounding section numbers only, "
@@ -293,9 +286,13 @@ async def _retrieve_rta_anchor(question: str) -> tuple[str, list[dict]]:
             {"case_id": h.case_id, "title": h.title, "url": h.url}
             for h in hits
         ]
-        return "\n".join(lines), leg_sources
+        return (
+            "\n".join(lines),
+            leg_sources,
+            route_debug_info(matched, injected_ids, suppressed_ids, original_question or question, question),
+        )
     except Exception:
-        return "", []
+        return "", [], {}
 
 
 _PROP_CHANGE_CHUNK_LOCATION = frozenset({
@@ -830,9 +827,9 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
             retrieval_question = await _rewrite_query(question)
 
             # Vector retrieve + RTA anchor run in parallel (web search needs leg_sources first)
-            (context_texts, sources), (anchor_vstore, leg_sources) = await asyncio.gather(
+            (context_texts, sources), (anchor_vstore, leg_sources, _route_debug) = await asyncio.gather(
                 _pipeline.retrieve(retrieval_question, **retrieve_kwargs),
-                _retrieve_rta_anchor(retrieval_question),
+                _retrieve_rta_anchor(retrieval_question, question),
             )
             t_retrieve = time.monotonic() - t0
 
@@ -872,9 +869,6 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
                 yield f"data: {json.dumps({'type': 'debug', 'strategy': strategy, 'retrieve_ms': round(t_retrieve * 1000), 'scores': scores, 'top': max(scores), 'min': min(scores), 'avg': round(sum(scores) / len(scores), 4), 'chunks': len(scores)})}\n\n"
 
             prop_change = bool(gate_stats)
-            wear_tear = _detect_wear_tear(question)
-            trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in retrieval_question.lower()][:6] if prop_change else []
-            wear_tear_terms = [t for t in sorted(_WEAR_TEAR_TERMS) if t in question.lower()][:6] if wear_tear else []
             anchor_method = "live_heading_aware" if (live_text and leg_sources) else ("vector_store" if leg_sources else "none")
             chunk_cards = _chunk_debug_cards(context_texts, sources, prop_change)
             anchor_cards = _anchor_debug_cards(leg_sources, anchor_method, live_text)
@@ -888,12 +882,9 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
                 "rewrite_used": retrieval_question.strip() != question.strip(),
                 "planner": {
                     "property_change_triggered": prop_change,
-                    "wear_tear_triggered": wear_tear,
-                    "trigger_terms": trigger_terms,
-                    "wear_tear_terms": wear_tear_terms,
-                    "forced_sections": sorted(_PROP_CHANGE_DESIRED_SECTIONS) if prop_change else (sorted(_WEAR_TEAR_DESIRED_SECTIONS) if wear_tear else []),
                     "gate": gate_stats if prop_change else None,
                 },
+                "statute_routing": _route_debug,
                 "anchor": {"method": anchor_method, "sections": anchor_cards},
                 "chunks": chunk_cards,
                 "budget": {
@@ -964,7 +955,7 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
         queue: asyncio.Queue = asyncio.Queue()
 
         # Shared RTA anchor + leg_sources for web verify (same question, run once)
-        shared_anchor, shared_leg_sources = await _retrieve_rta_anchor(question)
+        shared_anchor, shared_leg_sources, _cmp_route_debug = await _retrieve_rta_anchor(question, question)
 
         # Emit shared context debug (query + anchor info, shared across all strategy columns)
         _live_text_cmp = (
@@ -973,9 +964,8 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
             else None
         )
         _cmp_prop_change = _detect_prop_change(question)
-        _cmp_trigger_terms = [t for t in sorted(_PROP_CHANGE_TERMS) if t in question.lower()][:6] if _cmp_prop_change else []
         _cmp_anchor_method = "live_heading_aware" if (_live_text_cmp and shared_leg_sources) else ("vector_store" if shared_leg_sources else "none")
-        yield f"data: {json.dumps({'type': 'shared_context_debug', 'original_query': question, 'rewrite_mode': 'disabled_in_compare', 'planner': {'property_change_triggered': _cmp_prop_change, 'trigger_terms': _cmp_trigger_terms, 'forced_sections': sorted(_PROP_CHANGE_DESIRED_SECTIONS) if _cmp_prop_change else []}, 'anchor': {'method': _cmp_anchor_method, 'sections': _anchor_debug_cards(shared_leg_sources, _cmp_anchor_method, _live_text_cmp)}})}\n\n"
+        yield f"data: {json.dumps({'type': 'shared_context_debug', 'original_query': question, 'rewrite_mode': 'disabled_in_compare', 'planner': {'property_change_triggered': _cmp_prop_change}, 'statute_routing': _cmp_route_debug, 'anchor': {'method': _cmp_anchor_method, 'sections': _anchor_debug_cards(shared_leg_sources, _cmp_anchor_method, _live_text_cmp)}})}\n\n"
 
         async def _run_strategy(strat: str, col_idx: int) -> None:
             t0 = time.monotonic()
