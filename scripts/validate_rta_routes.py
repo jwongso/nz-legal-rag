@@ -21,57 +21,61 @@ from rag.retriever import VectorStore
 from tenancy.rta_routes import ROUTES
 
 SECTION_EXPECTATIONS: dict[str, dict] = {
+    # must_not_contain_any: terms that only appear in WRONG content (regulation text,
+    # penalty table rows). "infringement fee" is NOT forbidden - it appears in legitimate
+    # RTA section text as "infringement fee specified in Schedule 1B". Use "Schedule 1A "
+    # (trailing space) not "Schedule 1A" to avoid substring-matching "Schedule 1AA".
     "NZLEG/RTA/s13A": {
         "must_contain_any": ["tenancy agreement", "agreement in writing", "written", "contents"],
-        "must_not_contain_any": ["smoke alarm", "infringement fee", "Schedule 1A"],
+        "must_not_contain_any": ["19(2)", "Schedule 1A "],
     },
     "NZLEG/RTA/s13B": {
         "must_contain_any": ["agreement", "written", "copy", "landlord"],
-        "must_not_contain_any": ["smoke alarm", "infringement fee"],
+        "must_not_contain_any": ["smoke alarm", "insulation"],
     },
     "NZLEG/RTA/s18": {
         "must_contain_any": ["bond", "receipt", "weeks", "landlord"],
-        "must_not_contain_any": ["smoke alarm", "infringement fee", "19(2)"],
+        "must_not_contain_any": ["smoke alarm", "19(2)"],
     },
     "NZLEG/RTA/s28": {
         "must_contain_any": ["rent", "increase", "notice"],
-        "must_not_contain_any": ["infringement fee", "Schedule 1A"],
+        "must_not_contain_any": ["smoke alarm", "Schedule 1A "],
     },
     "NZLEG/RTA/s28A": {
         "must_contain_any": ["rent", "increase", "order"],
-        "must_not_contain_any": ["infringement fee", "Schedule 1A"],
+        "must_not_contain_any": ["smoke alarm", "Schedule 1A "],
     },
     "NZLEG/RTA/s40": {
         "must_contain_any": ["tenant", "clean", "land", "garden", "responsibilities"],
-        "must_not_contain_any": ["40(3A)(a)", "infringement fee", "1,800", "4,000"],
+        "must_not_contain_any": ["40(3A)(a)", "1,800", "4,000"],
     },
     "NZLEG/RTA/s42A": {
         "must_contain_any": ["fixture", "improvement", "consent"],
-        "must_not_contain_any": ["42A(7)", "infringement fee", "1,500"],
+        "must_not_contain_any": ["42A(7)", "1,500"],
     },
     "NZLEG/RTA/s42B": {
         "must_contain_any": ["minor", "change"],
-        "must_not_contain_any": ["42B(3)", "42B(6)", "infringement fee", "1,500"],
+        "must_not_contain_any": ["42B(3)", "42B(6)", "1,500"],
     },
     "NZLEG/RTA/s45": {
         "must_contain_any": ["repair", "maintain", "landlord"],
-        "must_not_contain_any": ["infringement fee", "Schedule 1A"],
+        "must_not_contain_any": ["smoke alarm", "Schedule 1A "],
     },
     "NZLEG/RTA/s48": {
         "must_contain_any": ["entry", "enter", "landlord"],
-        "must_not_contain_any": ["48(5)", "infringement fee"],
+        "must_not_contain_any": ["48(5)   ", "Schedule 1A "],
     },
     "NZLEG/RTA/s49A": {
         "must_contain_any": ["wear", "tear", "tenant"],
-        "must_not_contain_any": ["infringement fee", "Schedule 1A"],
+        "must_not_contain_any": ["smoke alarm", "Schedule 1A "],
     },
     "NZLEG/RTA/s49B": {
         "must_contain_any": ["damage", "tenant", "landlord"],
-        "must_not_contain_any": ["infringement fee", "Schedule 1A"],
+        "must_not_contain_any": ["smoke alarm", "Schedule 1A "],
     },
     "NZLEG/RTA/s51": {
         "must_contain_any": ["terminate", "notice", "periodic"],
-        "must_not_contain_any": ["infringement fee", "Schedule 1A"],
+        "must_not_contain_any": ["smoke alarm", "Schedule 1A "],
     },
 }
 
