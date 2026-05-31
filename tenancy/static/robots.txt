@@ -1,0 +1,59 @@
+# Allow Googlebot to index the landing page for discoverability.
+# Block all other crawlers from API endpoints.
+# Block all known AI training crawlers entirely.
+
+User-agent: Googlebot
+Allow: /
+Disallow: /ask
+Disallow: /ask/stream
+Disallow: /retrieve
+Disallow: /feedback
+Disallow: /search
+
+User-agent: Bingbot
+Allow: /
+Disallow: /ask
+Disallow: /ask/stream
+Disallow: /retrieve
+Disallow: /feedback
+Disallow: /search
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: omgili
+Disallow: /
+
+User-agent: *
+Disallow: /ask
+Disallow: /ask/stream
+Disallow: /retrieve
+Disallow: /feedback
+Disallow: /search

@@ -627,6 +627,11 @@ async def ui() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
 
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots() -> FileResponse:
+    return FileResponse(_STATIC / "robots.txt", media_type="text/plain")
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", **queue_status()}
