@@ -244,11 +244,11 @@ async def _retrieve_rta_anchor(
             synth_raw = _leg_store.search(synth_vector, top_k=8, courts=["NZLEG"])
             existing_ids = {h.case_id for h in raw}
             for h in synth_raw:
-                if (
-                    h.case_id in route.forced_sections
-                    and h.case_id not in existing_ids
-                    and h.case_id not in seen_inject
-                ):
+                if h.case_id in route.forced_sections and h.case_id not in seen_inject:
+                    if h.case_id in existing_ids:
+                        # Section already in vector results - promote it to the front
+                        # so max_hits=3 applies and it isn't crowded out by ranking.
+                        raw = [x for x in raw if x.case_id != h.case_id]
                     injections.append(h)
                     seen_inject.add(h.case_id)
                     injected_ids.append(h.case_id)
@@ -1125,7 +1125,7 @@ async def retrieve(req: RetrieveRequest, request: Request) -> dict:
 
     (context_texts, sources), (anchor_vstore, leg_sources, _) = await asyncio.gather(
         _pipeline.retrieve(retrieval_question, **retrieve_kwargs),
-        _retrieve_rta_anchor(retrieval_question),
+        _retrieve_rta_anchor(retrieval_question, question),
     )
 
     live_text = (

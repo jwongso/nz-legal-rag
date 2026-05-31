@@ -26,3 +26,8 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python3 -m pytest tests/test_rta_routes.py -v
+
+      - name: Smoke tests - Tier 1 retrieval (Qdrant, no LLM)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python3 -m pytest tests/test_smoke.py -m retrieval -v

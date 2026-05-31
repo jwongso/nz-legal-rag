@@ -36,3 +36,8 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "retrieval: Tier 1 - Qdrant only, no LLM required",
+    "structural: Tier 2 - LLM required, non-semantic (budget, citations, routing)",
+    "llm: Tier 3 - LLM required, semantic answer quality checks",
+]
