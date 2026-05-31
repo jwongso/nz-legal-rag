@@ -4,6 +4,12 @@ On-premise RAG pipeline for New Zealand legal research - covering 2.8 million+
 decision chunks across 13 NZ courts and tribunals, with structured trackers comparable
 to Westlaw NZ, running entirely on local hardware.
 
+**Live public demo - NZ Tenancy Tribunal assistant:** https://tenancy.localrun.ai
+
+Ask questions about your rights as a tenant or landlord. Answers are grounded in
+31,240 Tenancy Tribunal decisions and the Residential Tenancies Act 1986, with
+cited sources for every response. No login required.
+
 This project explores an on-premise RAG architecture for privacy-sensitive legal workflows,
 where data residency, legal professional privilege, and operational control are important
 design constraints. All inference, retrieval, and storage run on client hardware - no data
@@ -630,15 +636,20 @@ Pre-written SQL queries in `db/queries/` for corpus analysis without writing raw
 ## Test suite
 
 ```bash
+# Full suite
 pytest tests/ -v
+
+# Tier 1 only (Qdrant, no LLM required)
+pytest tests/test_smoke.py -m retrieval -v
 ```
 
-145 tests across 7 files. All tests run against live Qdrant and PostgreSQL
+187 tests across 8 files. All tests run against live Qdrant and PostgreSQL
 (no mocking). LLM-dependent tests are automatically skipped when the inference
 server is not running.
 
 | File | Tests | Coverage |
 |---|---|---|
+| `test_smoke.py` | 42 | 3-tier smoke suite: Tier 1 retrieval (15, Qdrant only), Tier 2 structural (8, LLM), Tier 3 semantic (19, LLM) |
 | `test_api.py` | 21 | All REST endpoints: health, search, ask (LLM-gated), notable, sentencing-tracker, pg-tracker |
 | `test_filter.py` | 20 | SQL pre-filter (`get_point_ids`), BM25 search, `get_document_metadata` |
 | `test_pipeline.py` | 15 | Embedder output, VectorStore search, deduplication, SQL-first hybrid roundtrip |
@@ -768,6 +779,10 @@ nz-legal-tunnel (Cloudflare). All start automatically on login.
 - [x] Tenancy BM25 two-pass retrieval - AND first, OR fallback with low-frequency terms only; domain stopwords strip legal boilerplate; 460x speedup vs naive OR scan
 - [x] Multi-strategy retrieval on tenancy tool: vector, vector (no rerank), MMR, BM25 selectable per request
 - [x] Concurrent request queue with per-IP fairness for the public tenancy tool
+- [x] Statute routing hygiene: per-route legislation allow-list with priority so high-confidence routes (e.g. property_change) block unrelated vector hits (e.g. s19 bond sections)
+- [x] Forced-section promotion: routing-injected sections already in vector results are promoted to front, ensuring max_hits=3 applies and they are never cut off by rank
+- [x] 3-tier smoke test suite (42 tests): Tier 1 Qdrant-only retrieval, Tier 2 structural LLM, Tier 3 semantic answer quality
+- [x] CI gate: Tier 1 smoke tests run on every push to main (self-hosted runner, Qdrant required)
 
 ### Near-term (current hardware)
 
