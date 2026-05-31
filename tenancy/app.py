@@ -716,8 +716,21 @@ def _check_token(request: Request) -> None:
 _FEEDBACK_LOG = Path("data/tenancy_feedback.jsonl")
 _FEEDBACK_FULL_LOG = Path("data/feedback_full.jsonl")
 _FEEDBACK_COOLDOWN_S = 30
-_FEEDBACK_MAX_BYTES = 10 * 1024 * 1024       # 10 MB - stop writing if exceeded
-_FEEDBACK_FULL_MAX_BYTES = 100 * 1024 * 1024  # 100 MB
+_FEEDBACK_MAX_BYTES = 20 * 1024 * 1024       # 20 MB per file before rotation
+_FEEDBACK_FULL_MAX_BYTES = 50 * 1024 * 1024  # 50 MB per file before rotation
+_FEEDBACK_ROTATE_KEEP = 5
+
+
+def _rotate_log(path: Path, max_bytes: int) -> None:
+    """Rotate log file if it exceeds max_bytes, keeping up to _FEEDBACK_ROTATE_KEEP old files."""
+    if not path.exists() or path.stat().st_size <= max_bytes:
+        return
+    for i in range(_FEEDBACK_ROTATE_KEEP - 1, 0, -1):
+        old = path.parent / f"{path.stem}.{i}{path.suffix}"
+        new = path.parent / f"{path.stem}.{i + 1}{path.suffix}"
+        if old.exists():
+            old.rename(new)
+    path.rename(path.parent / f"{path.stem}.1{path.suffix}")
 _feedback_last: TTLCache = TTLCache(maxsize=2000, ttl=_FEEDBACK_COOLDOWN_S)
 _feedback_full_last: TTLCache = TTLCache(maxsize=4000, ttl=1)
 
@@ -802,8 +815,8 @@ async def ask(req: AskRequest, request: Request) -> dict:
     question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
-    if len(question) > 5000:
-        raise HTTPException(status_code=400, detail={"error": "Question too long (max 5000 characters)."})
+    if len(question) > 1200:
+        raise HTTPException(status_code=400, detail={"error": "Question too long (max 1200 characters)."})
 
     ip = await acquire(request)
     try:
@@ -836,8 +849,8 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
     question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
-    if len(question) > 5000:
-        raise HTTPException(status_code=400, detail={"error": "Question too long (max 5000 characters)."})
+    if len(question) > 1200:
+        raise HTTPException(status_code=400, detail={"error": "Question too long (max 1200 characters)."})
 
     debug_mode = bool(_DEBUG_KEY and req.debug_key == _DEBUG_KEY)
     strategy = req.strategy if debug_mode and req.strategy in _VALID_STRATEGIES else "vector"
@@ -978,10 +991,10 @@ async def ask_stream_compare(req: CompareRequest, request: Request) -> Streaming
     question = _sanitize_question(req.question.strip())
     if not question:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
-    if len(question) > 5000:
-        raise HTTPException(status_code=400, detail={"error": "Question too long."})
+    if len(question) > 1200:
+        raise HTTPException(status_code=400, detail={"error": "Question too long (max 1200 characters)."})
 
-    strategies = [s for s in req.strategies if s in _VALID_STRATEGIES][:4]
+    strategies = [s for s in req.strategies if s in _VALID_STRATEGIES][:2]
     if not strategies:
         raise HTTPException(status_code=400, detail={"error": "No valid strategies selected."})
 
@@ -1187,9 +1200,9 @@ async def feedback(req: FeedbackRequest, request: Request) -> dict:
         "comment": req.comment[:500],
     }
     _FEEDBACK_LOG.parent.mkdir(parents=True, exist_ok=True)
-    if not (_FEEDBACK_LOG.exists() and _FEEDBACK_LOG.stat().st_size > _FEEDBACK_MAX_BYTES):
-        with _FEEDBACK_LOG.open("a") as f:
-            f.write(json.dumps(entry) + "\n")
+    _rotate_log(_FEEDBACK_LOG, _FEEDBACK_MAX_BYTES)
+    with _FEEDBACK_LOG.open("a") as f:
+        f.write(json.dumps(entry) + "\n")
     return {"ok": True}
 
 
@@ -1214,8 +1227,8 @@ async def feedback_full(req: FeedbackFullRequest, request: Request) -> dict:
         "ts_end": req.ts_end,
         "user_agent": req.user_agent[:300],
         "viewport": req.viewport,
-        "question": req.question[:500],
-        "answer": req.answer[:12000],
+        "question": req.question[:2000],
+        "answer": req.answer[:8000],
         "sources": req.sources,
         "legislation": req.legislation,
         "confidence": req.confidence,
@@ -1223,10 +1236,10 @@ async def feedback_full(req: FeedbackFullRequest, request: Request) -> dict:
         "verification": req.verification,
         "debug": req.debug,
         "debug_timing": req.debug_timing,
-        "context_debug": req.context_debug,
+        "context_debug": str(req.context_debug)[:20000] if req.context_debug else None,
     }
     _FEEDBACK_FULL_LOG.parent.mkdir(parents=True, exist_ok=True)
-    if not (_FEEDBACK_FULL_LOG.exists() and _FEEDBACK_FULL_LOG.stat().st_size > _FEEDBACK_FULL_MAX_BYTES):
-        with _FEEDBACK_FULL_LOG.open("a") as f:
-            f.write(json.dumps(entry) + "\n")
+    _rotate_log(_FEEDBACK_FULL_LOG, _FEEDBACK_FULL_MAX_BYTES)
+    with _FEEDBACK_FULL_LOG.open("a") as f:
+        f.write(json.dumps(entry) + "\n")
     return {"ok": True}

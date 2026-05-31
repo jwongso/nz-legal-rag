@@ -117,10 +117,15 @@ def test_ask_too_long_rejected(client):
 
 
 def test_ask_exactly_at_limit_accepted(client):
-    # 5000 chars is within limit - should not be rejected for length
+    # 1200 chars is within limit - should not be rejected for length
     # (may fail with 503 if LLM unavailable, but not 400)
-    r = client.post("/ask", headers=_TOKEN_HEADERS, json={"question": "x" * 5000})
+    r = client.post("/ask", headers=_TOKEN_HEADERS, json={"question": "x" * 1200})
     assert r.status_code != 400
+
+
+def test_ask_over_limit_rejected(client):
+    r = client.post("/ask", headers=_TOKEN_HEADERS, json={"question": "x" * 1201})
+    assert r.status_code == 400
 
 
 # ---------------------------------------------------------------------------

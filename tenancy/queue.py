@@ -1,6 +1,7 @@
 """
 Semaphore-based queue with per-IP rate limiting.
 Max 1 concurrent LLM call; each IP limited to 1 in-flight request.
+Global queue cap: MAX_QUEUE waiting slots before 503 is returned immediately.
 Requests wait up to 60s before receiving a 503.
 """
 
@@ -9,6 +10,7 @@ import asyncio
 from fastapi import HTTPException, Request
 
 _MAX_CONCURRENT = 1
+_MAX_QUEUE = 5       # refuse new requests when this many are already waiting
 _MAX_WAIT = 60.0
 _AVG_QUERY_SECONDS = 25
 
@@ -32,6 +34,7 @@ def queue_status() -> dict:
     return {
         "active": _active,
         "waiting": _waiting,
+        "max_queue": _MAX_QUEUE,
         "estimated_wait_seconds": max(0, (_waiting * _AVG_QUERY_SECONDS) // max(1, _MAX_CONCURRENT)),
     }
 
@@ -45,7 +48,7 @@ def queue_wait_estimate() -> dict:
     """Return position and estimated wait for a request about to acquire."""
     position = _waiting + 1
     estimated = (position * _AVG_QUERY_SECONDS) // max(1, _MAX_CONCURRENT)
-    return {"position": position, "active": _active, "estimated_wait_s": estimated}
+    return {"position": position, "max_queue": _MAX_QUEUE, "active": _active, "estimated_wait_s": estimated}
 
 
 async def acquire(request: Request) -> str:
@@ -59,6 +62,15 @@ async def acquire(request: Request) -> str:
             detail={
                 "error": "You already have a query in progress. Please wait for it to finish.",
                 "retry_after": 30,
+            },
+        )
+
+    if _waiting >= _MAX_QUEUE:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "The server is at capacity. Please try again in a moment.",
+                "retry_after": 60,
             },
         )
 
