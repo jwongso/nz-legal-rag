@@ -20,7 +20,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 import config
-from tenancy.app import app, _PUBLIC_TOKEN
+from tenancy.app import app, _PUBLIC_TOKEN, _prop_change_chunk_relevant
 
 _TOKEN_HEADERS = {"X-API-Key": _PUBLIC_TOKEN} if _PUBLIC_TOKEN else {}
 
@@ -599,3 +599,35 @@ def test_queue_wait_exceeded_returns_503(client):
         q._MAX_WAIT = original_wait
         q._active = 0
         loop.close()
+
+
+# ---- prop-change gate unit tests ----------------------------------------
+
+def test_prop_change_gate_rejects_plumbing_case():
+    """Plumbing/compliance chunk must be rejected even if it mentions premises."""
+    chunk = (
+        "landlord has failed to comply with several key legal requirements, making the premises "
+        "unlawful for occupation citing breaches of the Building Act 2004, the New Zealand Building "
+        "Code, and the Resource Management Act 1991. plumbing issues, such as a sewage odour "
+        "emanating from the shower drain"
+    )
+    assert not _prop_change_chunk_relevant(chunk)
+
+
+def test_prop_change_gate_keeps_backyard_structure_case():
+    """Backyard structures chunk citing s42 must pass the gate."""
+    chunk = (
+        "The tenancy agreement does not permit the tenant to build or erect additional structures "
+        "on the premises. The landlord did not give the tenant written permission to do this either. "
+        "By building two structures in the backyard, I find the tenant breached section 42(1) RTA."
+    )
+    assert _prop_change_chunk_relevant(chunk)
+
+
+def test_prop_change_gate_rejects_resource_consent_phrase():
+    """'resource consent' must not trigger the action set (was matching 'consent')."""
+    chunk = (
+        "the landlord's operation of the property without the required zoning or resource consent "
+        "violates the Resource Management Act 1991. The premises were unlawful for occupation."
+    )
+    assert not _prop_change_chunk_relevant(chunk)

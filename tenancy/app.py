@@ -31,6 +31,7 @@ from rag.generator import Generator
 from tenancy.rta_routes import (
     RouteIntent,
     allow_section,
+    get_dominant_leg_allow_list,
     match_routes,
     normalize_query,
     route_debug_info,
@@ -264,6 +265,17 @@ async def _retrieve_rta_anchor(
                 suppressed_ids.append(h.case_id)
         raw = filtered
 
+        # Route allow-list: when a high-confidence route defines a leg_allow_list,
+        # only those sections are permitted. This prevents loose vector hits from
+        # contaminating the legislation set (e.g. s19 bond sections in a fixture query).
+        dominant_allow = get_dominant_leg_allow_list(matched)
+        if dominant_allow:
+            allow_set = set(dominant_allow)
+            for h in raw:
+                if h.case_id.startswith("NZLEG/RTA/") and h.case_id not in allow_set:
+                    suppressed_ids.append(h.case_id)
+            raw = [h for h in raw if not h.case_id.startswith("NZLEG/RTA/") or h.case_id in allow_set]
+
         rta = [h for h in raw if h.case_id.startswith("NZLEG/RTA/")]
         seen: set[str] = set()
         hits = []
@@ -302,13 +314,24 @@ _PROP_CHANGE_CHUNK_LOCATION = frozenset({
 })
 _PROP_CHANGE_CHUNK_ACTION = frozenset({
     "fixture", "improvement", "alteration", "alter", "addition", "structure",
-    "consent", "section 42", "s42", "renovate", "renovation", "install",
+    "section 42", "s42", "renovate", "renovation", "install", "erect", "erected",
     "permission", "authoris", "authoriz", "permitted", "written consent",
+    "written permission", "without consent", "without permission",
+    "plant", "planted", "tree", "trees", "build", "built",
+    # "consent" removed: too broad - matches "resource consent" in compliance cases
+})
+# Chunks whose primary topic is landlord compliance failure, not tenant-initiated change.
+_PROP_CHANGE_CHUNK_REJECT = frozenset({
+    "resource management act", "building code", "building act 2004",
+    "plumbing", "sewage", "shower drain",
+    "unlawful for occupation", "healthy homes",
 })
 
 
 def _prop_change_chunk_relevant(text: str) -> bool:
     t = text.lower()
+    if any(term in t for term in _PROP_CHANGE_CHUNK_REJECT):
+        return False
     return (
         any(term in t for term in _PROP_CHANGE_CHUNK_LOCATION)
         and any(term in t for term in _PROP_CHANGE_CHUNK_ACTION)

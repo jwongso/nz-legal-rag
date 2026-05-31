@@ -33,6 +33,11 @@ class StatuteRoute:
     include_all: tuple[str, ...] = ()
     exclude_any: tuple[str, ...] = ()
     notes: str = ""
+    # When non-empty, only these sections are allowed through as legislation anchors.
+    # Prevents unrelated vector hits (e.g. s19 bond sections in a fixture query).
+    leg_allow_list: tuple[str, ...] = ()
+    # Higher priority wins when multiple routes define leg_allow_list.
+    priority: int = 0
 
 
 ROUTES: list[StatuteRoute] = [
@@ -66,6 +71,8 @@ ROUTES: list[StatuteRoute] = [
             "tenant obligations alter improve add fixtures to land garden "
             "written consent landlord section 40 42A 42B residential tenancies act"
         ),
+        leg_allow_list=("NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"),
+        priority=10,
         notes="Tenant changes to premises, garden, land, fixtures.",
     ),
     StatuteRoute(
@@ -209,6 +216,19 @@ def match_routes(original_query: str, rewritten_query: str) -> list[StatuteRoute
         if any_ok and all_ok:
             matches.append(route)
     return matches
+
+
+def get_dominant_leg_allow_list(matched: list[StatuteRoute]) -> tuple[str, ...]:
+    """Return the leg_allow_list from the highest-priority matched route that defines one.
+
+    When property_change and agreement_form both fire (e.g. because the query rewrite
+    introduced 'tenancy agreement'), property_change (priority=10) controls the
+    legislation set and agreement_form's sections are excluded.
+    """
+    candidates = [r for r in matched if r.leg_allow_list]
+    if not candidates:
+        return ()
+    return max(candidates, key=lambda r: r.priority).leg_allow_list
 
 
 def allow_section(case_id: str, combined_query: str) -> bool:
