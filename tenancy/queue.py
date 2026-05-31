@@ -1,11 +1,10 @@
 """
 Semaphore-based queue with per-IP rate limiting.
-Max 3 concurrent LLM calls; each IP limited to 1 in-flight request.
+Max 1 concurrent LLM call; each IP limited to 1 in-flight request.
 Requests wait up to 60s before receiving a 503.
 """
 
 import asyncio
-from collections import defaultdict
 
 from fastapi import HTTPException, Request
 
@@ -16,7 +15,7 @@ _AVG_QUERY_SECONDS = 25
 _semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 _active: int = 0
 _waiting: int = 0
-_ip_in_flight: dict[str, int] = defaultdict(int)
+_ip_in_flight: dict[str, int] = {}
 
 
 def get_client_ip(request: Request) -> str:
@@ -53,7 +52,8 @@ async def acquire(request: Request) -> str:
     global _active, _waiting
     ip = get_client_ip(request)
 
-    if _ip_in_flight[ip] >= 1:
+    # Use .get() to avoid creating a dict entry for every unique IP that checks in.
+    if _ip_in_flight.get(ip, 0) >= 1:
         raise HTTPException(
             status_code=429,
             detail={
@@ -63,13 +63,17 @@ async def acquire(request: Request) -> str:
         )
 
     _waiting += 1
-    _ip_in_flight[ip] += 1
+    _ip_in_flight[ip] = _ip_in_flight.get(ip, 0) + 1
 
     try:
         await asyncio.wait_for(_semaphore.acquire(), timeout=_MAX_WAIT)
     except asyncio.TimeoutError:
         _waiting -= 1
-        _ip_in_flight[ip] -= 1
+        count = _ip_in_flight.get(ip, 1) - 1
+        if count <= 0:
+            _ip_in_flight.pop(ip, None)
+        else:
+            _ip_in_flight[ip] = count
         raise HTTPException(
             status_code=503,
             detail={
@@ -87,4 +91,8 @@ def release(ip: str) -> None:
     global _active
     _semaphore.release()
     _active -= 1
-    _ip_in_flight[ip] = max(0, _ip_in_flight[ip] - 1)
+    count = _ip_in_flight.get(ip, 1) - 1
+    if count <= 0:
+        _ip_in_flight.pop(ip, None)
+    else:
+        _ip_in_flight[ip] = count
