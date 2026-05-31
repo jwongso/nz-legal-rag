@@ -725,7 +725,7 @@ Available tools:
 This project runs on a single machine with a consumer GPU. No Blackwell required.
 
 Current inference: llama-server with Qwen3-8B-Q5_K_M, fully on GPU (RTX 4060 Laptop,
-8GB VRAM), ctx-size 4096, --parallel 2 --kv-unified, ~59 tok/s generation.
+8GB VRAM), ctx-size 5120, --parallel 1, ~59 tok/s generation.
 
 Embeddings: nomic-embed-text-v1.5 via sentence-transformers. Auto-selects CUDA at
 startup (rag/device.py) - uses GPU for bulk ingest, falls back to CPU at query time
