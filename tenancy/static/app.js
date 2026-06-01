@@ -1,5 +1,16 @@
 'use strict';
 
+// ---- Anonymous session (localStorage UUID, 7-day sliding window) ----
+function _getSessionId() {
+  const key = 'nz_tenancy_session_id';
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 // ---- Debug mode (Ctrl+Shift+D to activate) ----
 let _debugKey = '';
 let _debugMode = false;
@@ -1124,6 +1135,7 @@ form.addEventListener('submit', async (e) => {
       headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
       body: JSON.stringify({
         question,
+        session_id: _getSessionId(),
         debug_key: _debugKey,
         strategy: strategies[0] || 'vector',
         irac: document.getElementById('irac-toggle').checked,
