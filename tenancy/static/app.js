@@ -444,6 +444,12 @@ function renderAnswer(text) {
   const html = text.split(/\n{2,}/).map(para => {
     const lines = para.split('\n');
 
+    const headingLine = lines[0].match(/^(#{1,3}) (.+)/);
+    if (headingLine) {
+      const level = headingLine[1].length + 2;
+      return `<h${level}>${headingLine[2]}</h${level}>`;
+    }
+
     if (lines.some(l => /^[-*] /.test(l.trim()))) {
       // Accumulate continuation lines into the current bullet item
       const items = [];

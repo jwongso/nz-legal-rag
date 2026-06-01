@@ -273,6 +273,62 @@ textarea:focus {
   border-color: var(--primary);
 }
 
+/* ---- Prompt tips ---- */
+.prompt-tips {
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.prompt-tips-toggle {
+  padding: 9px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.prompt-tips-toggle::-webkit-details-marker { display: none; }
+
+.prompt-tips-toggle::before {
+  content: '+';
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--primary);
+  transition: transform 0.15s;
+}
+
+.prompt-tips[open] .prompt-tips-toggle::before {
+  content: '-';
+}
+
+.prompt-tips-list {
+  margin: 0 14px 10px 30px;
+  padding: 0;
+  font-size: 0.84rem;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.prompt-tips-list li {
+  margin-bottom: 2px;
+}
+
+.prompt-tips-example {
+  margin: 8px 14px 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.55;
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+}
+
 /* ---- Submit button ---- */
 .submit-btn {
   background: var(--primary);
