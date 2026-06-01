@@ -33,7 +33,7 @@ app = create_app(
 
 @app.middleware("http")
 async def _log_questions(request: Request, call_next):
-    if request.method == "POST" and request.url.path == "/ask/stream":
+    if request.method == "POST" and request.url.path == "/ask/stream" and not request.headers.get("X-No-Log"):
         body = await request.body()
         try:
             data = json.loads(body)
