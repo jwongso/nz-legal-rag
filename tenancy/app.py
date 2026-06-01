@@ -718,6 +718,7 @@ def _check_token(request: Request) -> None:
         )
 
 
+_QUESTION_LOG = Path("data/question_log.jsonl")
 _FEEDBACK_LOG = Path("data/tenancy_feedback.jsonl")
 _FEEDBACK_FULL_LOG = Path("data/feedback_full.jsonl")
 _FEEDBACK_COOLDOWN_S = 30
@@ -856,6 +857,16 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
         raise HTTPException(status_code=400, detail={"error": "Question must not be empty."})
     if len(question) > 1200:
         raise HTTPException(status_code=400, detail={"error": "Question too long (max 1200 characters)."})
+
+    try:
+        _QUESTION_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with _QUESTION_LOG.open("a") as _qlf:
+            _qlf.write(json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "q": question,
+            }) + "\n")
+    except Exception:
+        pass
 
     debug_mode = bool(_DEBUG_KEY and req.debug_key == _DEBUG_KEY)
     strategy = req.strategy if debug_mode and req.strategy in _VALID_STRATEGIES else "vector"
