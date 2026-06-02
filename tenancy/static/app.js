@@ -494,6 +494,19 @@ function renderAnswer(text) {
       return `<ol>${items.map(it => `<li value="${it.num}">${it.text}</li>`).join('')}</ol>`;
     }
 
+    const tableLines = lines.filter(l => /^\|/.test(l.trim()));
+    if (tableLines.length >= 2) {
+      const sepIdx = tableLines.findIndex(l => /^\|[\s\-|:]+\|/.test(l.trim()) && !/[a-zA-Z0-9]/.test(l));
+      if (sepIdx === 1) {
+        const parseRow = row => row.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        const headers = parseRow(tableLines[0]);
+        const dataRows = tableLines.slice(sepIdx + 1);
+        const thead = `<thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`;
+        const tbody = `<tbody>${dataRows.map(r => `<tr>${parseRow(r).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+        return `<table class="answer-table">${thead}${tbody}</table>`;
+      }
+    }
+
     return `<p>${lines.map(l => l.replace(/  $/, '')).join('<br>')}</p>`;
   }).join('');
 

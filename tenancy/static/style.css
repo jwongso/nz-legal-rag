@@ -442,6 +442,25 @@ textarea:focus {
 
 .answer-body strong { color: var(--primary-dark); }
 
+.answer-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.88rem;
+}
+.answer-table th, .answer-table td {
+  border: 1px solid #c5d0e8;
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.answer-table th {
+  background: #eef1f8;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+.answer-table tr:nth-child(even) td { background: #f7f9fd; }
+
 .citation {
   display: inline-block;
   background: var(--primary);
