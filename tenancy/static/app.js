@@ -650,12 +650,12 @@ function _resetArtifact(question, strategy) {
   };
 }
 
-async function _saveFullFeedback(payload, rating, comment) {
+async function _saveFullFeedback(payload, rating, comment, isDebug) {
   try {
     await fetch('/feedback/full', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': _apiToken },
-      body: JSON.stringify({ ...payload, rating, comment: comment || '' }),
+      body: JSON.stringify({ ...payload, rating, comment: comment || '', is_debug: isDebug || false }),
     });
   } catch (_) {}
 }
@@ -690,6 +690,13 @@ function submitFeedback(rating) {
 
 thumbUp.addEventListener('click', () => submitFeedback(1));
 thumbDown.addEventListener('click', () => submitFeedback(-1));
+document.getElementById('debug-capture').addEventListener('click', async () => {
+  const btn = document.getElementById('debug-capture');
+  await _saveFullFeedback(_artifact, 0, '', true);
+  btn.classList.add('saved');
+  btn.title = 'Debug context saved';
+  setTimeout(() => { btn.classList.remove('saved'); btn.title = 'Save debug context for analysis'; }, 2000);
+});
 
 feedbackSubmit.addEventListener('click', async () => {
   if (currentRating === null) return;

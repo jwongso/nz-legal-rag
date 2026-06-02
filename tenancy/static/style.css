@@ -719,6 +719,9 @@ textarea:focus {
 
 .feedback-btn:hover { border-color: var(--primary); color: var(--primary); }
 .feedback-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+.debug-capture-btn { margin-left: 8px; opacity: 0.45; padding: 5px 8px; }
+.debug-capture-btn:hover { opacity: 1; border-color: var(--muted); color: var(--muted); }
+.debug-capture-btn.saved { opacity: 1; border-color: #16a34a; color: #16a34a; }
 
 .feedback-comment {
   display: none;
