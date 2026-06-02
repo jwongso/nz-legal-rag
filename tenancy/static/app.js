@@ -1139,6 +1139,7 @@ form.addEventListener('submit', async (e) => {
         debug_key: _debugKey,
         strategy: strategies[0] || 'vector',
         irac: document.getElementById('irac-toggle').checked,
+        feedback_context: true,
       }),
     });
   } catch (_) {
