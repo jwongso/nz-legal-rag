@@ -54,6 +54,11 @@ ACTS: dict[str, dict] = {
         "year": 1961,
         "url": "https://www.legislation.govt.nz/act/public/1961/0043/latest/whole.html",
     },
+    "HHS2019": {
+        "title": "Housing (Healthy Homes Standards) Regulations 2019",
+        "year": 2019,
+        "url": "https://www.legislation.govt.nz/regulation/public/2019/0234/latest/whole.html",
+    },
 }
 
 

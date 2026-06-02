@@ -16,7 +16,7 @@ import os
 import config
 from ingest.chunker import Chunk
 from ingest.legislation import ACTS, LegSection, scrape_act
-from rag.embedder import Embedder
+from core.embedder import Embedder
 from rag.retriever import VectorStore
 
 
