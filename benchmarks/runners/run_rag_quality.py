@@ -65,6 +65,7 @@ def _stream_ask(question: str, token: str) -> dict:
         headers={
             "Content-Type": "application/json",
             "X-API-Key": token,
+            "X-No-Log": "1",
         },
     )
     t0 = time.monotonic()

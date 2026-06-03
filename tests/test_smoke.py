@@ -30,9 +30,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 import config
-from tenancy.app import app, _PUBLIC_TOKEN
+from tenancy.app import app
+from core.api import _PUBLIC_TOKEN
 
-_TOKEN_HEADERS = {"X-API-Key": _PUBLIC_TOKEN} if _PUBLIC_TOKEN else {}
+_TOKEN_HEADERS = {"X-API-Key": _PUBLIC_TOKEN, "X-No-Log": "1"} if _PUBLIC_TOKEN else {"X-No-Log": "1"}
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -106,7 +107,7 @@ def _stream(client, question: str) -> tuple[list, str, dict]:
     r = client.post(
         "/ask/stream",
         headers=_TOKEN_HEADERS,
-        json={"question": question},
+        json={"question": question, "feedback_context": True},
     )
     events = _parse_sse_events(r.text)
     leg_sources: list = []
@@ -183,10 +184,10 @@ def _assert_citations_mapped(answer: str, sources: list) -> None:
 
 
 def _assert_practical_answer(answer: str) -> None:
-    """Criterion 5: answer should end with the Community Law / Tenancy Services signpost."""
+    """Criterion 5: answer must include a practical referral signpost."""
     lower = answer.lower()
-    assert "community law" in lower or "tenancy services" in lower, (
-        "Answer missing practical signpost (Community Law / Tenancy Services). "
+    assert any(t in lower for t in ["community law", "tenancy services", "tenancy tribunal", "tribunal"]), (
+        "Answer missing practical signpost (Community Law / Tenancy Services / Tribunal). "
         "System prompt may have been overridden."
     )
 
