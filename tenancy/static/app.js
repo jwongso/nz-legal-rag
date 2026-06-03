@@ -957,6 +957,7 @@ form.addEventListener('submit', async (e) => {
         strategy: strategies[0] || 'vector',
         irac: document.getElementById('irac-toggle').checked,
         feedback_context: true,
+        user_context: Astraea.getUserContext('nzth_user_ctx'),
       }),
     });
   } catch (_) {
@@ -1062,3 +1063,4 @@ _initDebugShortcut();
 pollQueue();
 setInterval(pollQueue, 15000);
 Astraea.initDisclaimer('nzth_agreed_v1');
+Astraea.initUserContext('nzth_user_ctx');
