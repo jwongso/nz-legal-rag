@@ -8,14 +8,9 @@ version = "0.2.0"
 description = "On-premise RAG pipeline for NZ court decisions and legislation"
 requires-python = ">=3.11"
 dependencies = [
-    "httpx>=0.27",
-    "beautifulsoup4>=4.12",
-    "qdrant-client>=1.9",
-    "fastapi>=0.111",
-    "uvicorn[standard]>=0.29",
+    "astraea-framework>=0.1.0",
     "mcp>=1.0",
-    "pydantic>=2.7",
-    "sentence-transformers>=3.0",
+    "beautifulsoup4>=4.12",
     "pypdf>=4.0",
     "pytesseract>=0.3",
     "pillow>=10.0",
