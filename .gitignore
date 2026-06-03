@@ -13,6 +13,7 @@ data/*.log
 eval/results.json
 eval/bench_results/
 benchmarks/reports/
+benchmarks/*.json
 .ruff_cache/
 .pytest_cache/
 westlaw_index.txt
