@@ -764,6 +764,31 @@ class TestSemantic:
 
     @_LLM_SKIP
     @pytest.mark.llm
+    def test_ambiguous_question_asks_clarification_or_interprets_charitably(self, client):
+        """Unusual-but-possibly-valid question must either ask for clarification or
+        pick the most plausible legal reading - never fabricate rights."""
+        _, answer, _ = _stream(
+            client,
+            "I am angry because my landlord gave me two weeks free-rent, what can I do?"
+        )
+        _assert_not_empty_answer(answer)
+        lower = answer.lower()
+        # Must not fabricate deduction rights
+        assert "deduct the difference" not in lower
+        assert "entitled to deduct" not in lower
+        # Must either ask for clarification OR address a plausible valid scenario
+        # (e.g. free rent offered to avoid fixing a repair, or conditions attached)
+        assert any(t in lower for t in [
+            "clarif", "rephrase", "what actually", "could you",
+            "repair", "oblig", "condition", "avoid", "instead of",
+            "fulfil", "fulfill", "breach",
+        ]), (
+            "Ambiguous question must ask for clarification or address a plausible "
+            "valid reading - not fabricate legal rights."
+        )
+
+    @_LLM_SKIP
+    @pytest.mark.llm
     def test_nonsensical_question_no_fabrication(self, client):
         """Logically contradictory question must not produce fabricated legal rights."""
         _, answer, _ = _stream(
