@@ -735,3 +735,55 @@ class TestSemantic:
         ]) or len(answer) < 600, (
             "Niche query with weak context should admit uncertainty or be brief."
         )
+
+    # ---- Pass criterion 7: perspective label in verdict -------------------
+
+    @_LLM_SKIP
+    @pytest.mark.llm
+    def test_verdict_labels_tenant_perspective(self, client):
+        """Verdict opening must say 'as tenant' for a clear tenant question."""
+        _, answer, _ = _stream(client, "My landlord is withholding my bond. The carpet was 8 years old. Am I liable?")
+        _assert_not_empty_answer(answer)
+        first_sentence = answer.split(".")[0].lower()
+        assert "as tenant" in first_sentence, (
+            f"Verdict must label perspective 'as tenant'. Got: {first_sentence!r}"
+        )
+
+    @_LLM_SKIP
+    @pytest.mark.llm
+    def test_verdict_labels_landlord_perspective(self, client):
+        """Verdict opening must say 'as landlord' when question is from landlord."""
+        _, answer, _ = _stream(client, "I am a landlord. My tenant has not paid rent for 3 weeks. What can I do?")
+        _assert_not_empty_answer(answer)
+        first_sentence = answer.split(".")[0].lower()
+        assert "as landlord" in first_sentence, (
+            f"Verdict must label perspective 'as landlord'. Got: {first_sentence!r}"
+        )
+
+    # ---- Pass criterion 8: nonsensical question sanity check --------------
+
+    @_LLM_SKIP
+    @pytest.mark.llm
+    def test_nonsensical_question_no_fabrication(self, client):
+        """Logically contradictory question must not produce fabricated legal rights."""
+        _, answer, _ = _stream(
+            client,
+            "As tenant, I am complaining because the rental payment is too cheap, what can I do?"
+        )
+        _assert_not_empty_answer(answer)
+        lower = answer.lower()
+        # Must not fabricate deduction rights or false remedies
+        assert "deduct the difference" not in lower, (
+            "Answer must not fabricate a right to deduct rent for a nonsensical question."
+        )
+        assert "entitled to deduct" not in lower, (
+            "Answer must not invent deduction entitlements."
+        )
+        # Must signal the question is not a valid legal claim or redirect
+        assert any(t in lower for t in [
+            "not a valid", "not a legal", "cannot legally complain",
+            "rephrase", "clarify", "no legal", "does not correspond",
+            "not recognised", "no basis", "not possible under",
+        ]), (
+            "Nonsensical question must be flagged as not a valid legal situation."
+        )
