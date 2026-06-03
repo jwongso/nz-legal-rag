@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "On-premise RAG pipeline for NZ court decisions and legislation"
 requires-python = ">=3.11"
 dependencies = [
-    "astraea-framework>=0.1.0",
+    "astraea-framework>=0.2.0",
     "mcp>=1.0",
     "beautifulsoup4>=4.12",
     "pypdf>=4.0",
