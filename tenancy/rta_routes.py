@@ -22,6 +22,7 @@ class RouteIntent(str, Enum):
     LANDLORD_ENTRY = "landlord_entry"
     TERMINATION_NOTICE = "termination_notice"
     REPAIRS_MAINTENANCE = "repairs_maintenance"
+    SHAM_FLATMATE_AGREEMENT = "sham_flatmate_agreement"
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,20 @@ ROUTES: list[StatuteRoute] = [
             "fixture", "alteration", "alter", "altered",
             "install", "installed", "renovate", "renovation",
             "minor change", "improvement", "fence",
+            "drawing pin", "drawing pins", "command strip", "command strips",
+            "picture hook", "picture hooks", "blu-tack", "blu tack", "bluetack",
+        ),
+        exclude_any=(
+            "fair wear and tear", "wear and tear",
+            "install fixture", "installed fixture",
+            "healthy homes",
+            # Prevent firing when the question is about someone else entering the property.
+            # "garden" and "without permission" are broad and trigger on owner/homeowner intrusion.
+            "entered my home", "came into my home", "already in my home",
+            "was in my home", "was in my house", "was in my flat",
+            "home owner", "homeowner", "property owner",
+            "is she allowed", "is he allowed",
+            "uninvited", "intruding", "trespassing",
         ),
         forced_sections=("NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"),
         synthetic_query=(
@@ -90,11 +105,19 @@ ROUTES: list[StatuteRoute] = [
             "appliance", "oven", "stove", "fridge",
             "landlord obligation", "landlord's obligation",
             "s45",
+            "pest", "pests", "pest control", "infestation", "infested",
+            "spider", "spiders", "rat", "rats", "mice", "mouse",
+            "cockroach", "cockroaches", "ant infestation", "fleas", "bedbugs",
+            "bug", "bugs", "insect", "insects",
+            "exterminator", "fumigation", "fumigated", "bitten",
+            "overgrown", "state of cleanliness", "clean on move in",
+            "heat pump", "heatpump",
+            "s33",
         ),
         exclude_any=(
             "fair wear and tear", "wear and tear",
         ),
-        forced_sections=("NZLEG/RTA/s45",),
+        forced_sections=("NZLEG/RTA/s45", "NZLEG/RTA/s33"),
         synthetic_query=(
             "landlord responsibility maintain premises reasonable state repair "
             "section 45 habitable condition heating hot water weathertight "
@@ -103,12 +126,50 @@ ROUTES: list[StatuteRoute] = [
         notes="Landlord maintenance and repair obligations (s45).",
     ),
     StatuteRoute(
+        intent=RouteIntent.SHAM_FLATMATE_AGREEMENT,
+        include_any=(
+            "flatmate agreement", "flatmate arrangement",
+            "boarder agreement", "boarder arrangement",
+            "licence agreement", "licensee",
+            "not a tenant", "not tenants", "are we tenants",
+            "meant to be tenants", "should be tenants",
+            "landlord not living", "landlord lives elsewhere",
+            "landlord doesn't live", "landlord does not live",
+            "landlord not resident", "landlord not there",
+            "s5",
+            "sublet", "subletting", "sublease", "sub-letting", "sub-lease",
+            "renting from a flatmate", "paying my flatmate", "flatmate charges",
+            "flatmate is my landlord", "room from a flatmate",
+            "he pays the landlord", "she pays the landlord",
+            "paying through my flatmate", "pays the landlord for me",
+        ),
+        forced_sections=("NZLEG/RTA/s5",),
+        synthetic_query=(
+            "flatmate boarder licensee agreement landlord not resident sham tenancy "
+            "RTA applies despite flatmate agreement section 5 definition residential "
+            "tenancy landlord not living premises tenant rights wrongful agreement "
+            "subletting sublet room rent through flatmate does rta apply"
+        ),
+        notes="Sham flatmate/boarder/subletting arrangements - RTA applicability (s5).",
+    ),
+    StatuteRoute(
         intent=RouteIntent.AGREEMENT_FORM,
         include_any=(
             "tenancy agreement", "written agreement", "copy of agreement",
             "sign agreement", "signing agreement", "before signing",
             "provide agreement", "give the agreement", "before getting the agreement",
             "form of agreement", "written tenancy", "contents of agreement",
+            "pet clause", "pets allowed", "no pets", "pets not allowed",
+            "cats allowed", "dogs allowed", "cat allowed", "dog allowed",
+            "allow pets", "allow cats", "allow dogs",
+            "pet policy", "pet bond", "no pet",
+        ),
+        exclude_any=(
+            # Don't fire when the tenant is saying they DON'T have an agreement -
+            # that question is about RTA applicability, not agreement contents.
+            "no agreement", "no written agreement", "no formal agreement",
+            "without agreement", "there is no agreement", "no contract",
+            "verbal agreement only", "nothing in writing",
         ),
         forced_sections=("NZLEG/RTA/s13A", "NZLEG/RTA/s13B"),
         synthetic_query=(
@@ -125,6 +186,9 @@ ROUTES: list[StatuteRoute] = [
             "bond before", "bond form", "bond help",
             "work and income", "winz", "bond guarantee",
             "can pay the bond", "pay the bond",
+            "paid bond", "paid a bond", "paid the bond",
+            "paid 1 week bond", "paid 2 weeks bond", "paid 3 weeks bond",
+            "paid 4 weeks bond", "took a bond", "bond was taken",
             "s18",
         ),
         forced_sections=("NZLEG/RTA/s18",),
@@ -139,9 +203,19 @@ ROUTES: list[StatuteRoute] = [
         include_any=(
             "landlord entry", "landlord enter", "right of entry",
             "inspection notice", "24 hour notice", "24 hours notice",
+            "inspection report", "routine inspection",
             "landlord came in", "landlord access",
             "notice before entering", "notice to enter",
             "s48",
+            # Homeowner vocabulary - people often say "home owner" or "property owner"
+            # even when referring to their landlord, especially when the owner lives nearby
+            # and acts directly rather than through an agent.
+            "home owner", "homeowner", "property owner", "owner of the house",
+            "owner of the property", "owner came in", "owner entered",
+            "entered my home", "came into my home", "already in my home",
+            "was in my home", "was in my house", "was in my flat",
+            "uninvited", "is she allowed to do this", "is he allowed to do this",
+            "allowed to enter", "allowed to come in",
         ),
         forced_sections=("NZLEG/RTA/s48",),
         synthetic_query=(
@@ -194,6 +268,15 @@ LOW_PRIORITY_SECTIONS: dict[str, tuple[str, ...]] = {
         "landlord overseas", "landlord out of new zealand",
         "agent if landlord", "21 consecutive days",
         "out of new zealand", "overseas landlord",
+    ),
+    # s55AA: termination by notice for physical assault by tenant.
+    # CE scores ~0.58 on relationship-breakdown and repeated-breach questions
+    # because "termination" semantics overlap. Only allow when the question
+    # actually involves assault, violence, or physical harm vocabulary.
+    "NZLEG/RTA/s55AA": (
+        "assault", "physical assault", "attacked", "attack",
+        "violence", "violent", "threatened", "threat",
+        "hit", "punched", "kicked", "hurt", "injured", "harm",
     ),
 }
 
