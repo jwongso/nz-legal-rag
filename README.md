@@ -1,5 +1,12 @@
 # nz-legal-rag
 
+> **ARCHIVED** - This repository is no longer the source of the live services.
+> Both `tenancy.localrun.ai` and `nz-legal-rag.localrun.ai` now run from
+> [jwongso/astraea](https://github.com/jwongso/astraea). All future development
+> happens there. This repo is kept for historical reference and ingestion scripts.
+
+---
+
 On-premise RAG pipeline for New Zealand legal research - covering 2.8 million+
 decision chunks across 13 NZ courts and tribunals, with structured trackers comparable
 to Westlaw NZ, running entirely on local hardware.
@@ -12,24 +19,37 @@ cited sources for every response. No login required.
 
 **Full legal research tool (private, all courts):** https://nz-legal-rag.localrun.ai
 
+Both services now run the [Astraea framework](https://github.com/jwongso/astraea).
+
 ---
 
-## Architecture
+## Migration history
 
-The API and runtime are now powered by [Astraea](https://github.com/jwongso/astraea) -
-an open-source framework extracted from this project. This repo contains the NZ-specific
-pipeline extension, ingestion scripts, and data.
+This project was the original monolithic NZ legal RAG implementation. The runtime
+(API, routing, streaming, queue, legislation anchors) has been extracted and
+generalised into the [Astraea framework](https://github.com/jwongso/astraea).
+
+What moved to Astraea:
+- `tenancy/app.py` -> `jurisdictions/nz_tenancy/` in Astraea
+- `jurisdictions/nz_legal/` -> `jurisdictions/nz_legal/` in Astraea
+- `rag/` core pipeline -> `core/` in Astraea
+- `tenancy/static/` frontend -> `jurisdictions/nz_tenancy/static/` in Astraea
+
+What stays here (still useful):
+- `ingest/` - ingestion scripts for re-indexing court decisions into Qdrant
+- `data/` - local data and configuration specific to this deployment
+- Historical reference for the original architecture
+
+---
+
+## Architecture (current - Astraea)
 
 ```
-tenancy.localrun.ai                nz-legal-rag.localrun.ai
+tenancy.localrun.ai              nz-legal-rag.localrun.ai
         |                                    |
-tenancy/app.py                  jurisdictions/nz_legal/app.py
+  astraea repo                         astraea repo
+  jurisdictions/nz_tenancy/       jurisdictions/nz_legal/
         |                                    |
- NZLegalPipeline                      (Astraea core)
- (rag/nz_pipeline.py)            /search, /notable, /sentencing-tracker
-  + legal_ranker                  /pg-tracker, /contrasting-cases
-  + optional reranker                         |
-        |                                     |
         +------------------+-----------------+
                            |
                  Astraea core (create_app)
@@ -77,87 +97,10 @@ tenancy/app.py                  jurisdictions/nz_legal/app.py
 
 ---
 
-## Tracker endpoints
+## Ingestion (still maintained here)
 
-These structured-data endpoints are specific to the `nz_legal` jurisdiction and are
-registered via Astraea's `register_routes()` hook. They compete directly with Westlaw NZ's
-premium tracker products, delivered on-premise with no per-user SaaS fee.
-
-| Endpoint | Westlaw NZ equivalent |
-|---|---|
-| `POST /sentencing-tracker` | Sentencing Tracker |
-| `POST /pg-tracker` | Personal Grievance Tracker |
-| `POST /notable` | OSH Tracker / Resource Management Tracker |
-| `POST /contrasting-cases` | (no direct equivalent - contrastive retrieval) |
-| `GET /search` | Semantic search without generation |
-
-### Sentencing Tracker (`POST /sentencing-tracker`)
-
-Structured criminal sentencing factors from NZHC, NZCA, NZSC decisions.
-Filter by: courts, year range, sentence type, starting point, final sentence, guilty plea.
-
-### Personal Grievance Tracker (`POST /pg-tracker`)
-
-ERA / NZEmpC personal grievance outcome data.
-Filter by: grievance type, reinstatement, contributory conduct, compensation range, court, year.
-
-### Similar Cases With Opposite Outcomes (`POST /contrasting-cases`)
-
-Finds semantically similar cases where the court reached a different outcome.
-
-```json
-POST /contrasting-cases
-{
-  "query": "aggravated robbery weapon group offending youth",
-  "domain": "criminal",
-  "split_by": "sentence_type",
-  "top_k": 5
-}
-```
-
-Supported domains: `criminal` (split by `sentence_type` or `guilty_plea`),
-`employment` (split by `reinstatement`).
-
----
-
-## NZ-specific pipeline (`rag/nz_pipeline.py`)
-
-`NZLegalPipeline` extends Astraea's `RAGPipeline` with two post-retrieval steps
-specific to NZ legal corpora:
-
-1. **Legal authority ranker** (`rag/legal_ranker.py`) - re-orders by court hierarchy
-   (SC > CA > HC > tribunals) and legal signals (citation density, statute boost, recency).
-   MRR +37% vs raw vector search baseline.
-
-2. **Cross-encoder reranker** (`rag/reranker.py`) - optional BAAI/bge-reranker-v2-m3.
-   Off by default (`RERANK_MODE=off`). Enable with `RERANK_MODE=rerank_5`.
-
----
-
-## MCP integration
-
-Add to your Claude Desktop or Claude Code MCP config:
-
-```json
-{
-  "mcpServers": {
-    "nz-legal": {
-      "command": "python",
-      "args": ["-m", "mcp.server"],
-      "cwd": "/path/to/nz-legal-rag"
-    }
-  }
-}
-```
-
-Available tools:
-- `search_nz_law(query, court?, date_from?, date_to?, top_k?)` - semantic search
-- `get_case(case_id)` - retrieve a specific decision
-- `list_courts()` - list indexed courts and decision counts
-
----
-
-## Ingestion
+The ingestion scripts that populate the Qdrant collections live in `ingest/` and
+are still the authoritative way to re-index or extend the corpus.
 
 ```bash
 # Ingest NZCA decisions (2020-2026)
@@ -184,9 +127,8 @@ python -u -m ingest.recovery_agg         # civil recovery rate aggregation
 | Vector database | Qdrant |
 | Embeddings | nomic-embed-text-v1.5 via sentence-transformers (in-process) |
 | LLM inference | llama.cpp (OpenAI-compatible, local) |
-| Legal ranker | `rag/legal_ranker.py` - court hierarchy + intent-aware scoring |
+| Legal ranker | court hierarchy + intent-aware scoring |
 | Reranker | bge-reranker-v2-m3 (optional, off by default) |
-| MCP server | Python MCP SDK |
 
 ---
 
